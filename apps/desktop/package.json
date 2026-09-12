@@ -1,0 +1,17 @@
+{
+  "name": "@yiyabo/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "dev:web": "DESKTOP_MODE=1 pnpm --filter @latex-ide/web dev",
+    "assemble": "node ./scripts/assemble-server.mjs",
+    "build:app": "hdiutil detach /Volumes/yiyabo -quiet 2>/dev/null; pnpm --filter @latex-ide/web build && node ./scripts/assemble-server.mjs && tauri build && node ./scripts/make-dmg.mjs"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.0"
+  },
+  "description": "yiyabo \u2014 AI LaTeX writing workbench"
+}

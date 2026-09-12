@@ -1,0 +1,51 @@
+# Dependencies
+node_modules
+
+# Next.js
+.next
+out
+
+# Build artifacts (never commit)
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/server-dist/
+apps/desktop/dist/
+dist
+*.dmg
+*.tsbuildinfo
+.turbo
+
+# Prisma
+.prisma
+
+# Local databases (contain user data / API keys)
+*.db
+*.db-journal
+
+# Environment
+.env
+.env.local
+.env*.local
+
+# Hermes session state
+.hermes/
+
+# Storage & uploads
+storage/
+apps/web/data/storage/
+apps/web/public/uploads
+data/
+tmp/
+
+# Logs & coverage
+*.log
+coverage
+
+# OS
+.DS_Store
+
+# Spotlight marker (empty dir)
+target/
+
+# Tool session state
+.mimosa/
+.playwright-mcp/

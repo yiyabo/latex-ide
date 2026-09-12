@@ -1,0 +1,19 @@
+{
+  "name": "latex-ide",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter @latex-ide/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:push": "pnpm --filter @latex-ide/web db:push",
+    "worker:compile": "pnpm --filter @latex-ide/compile-worker dev",
+    "desktop": "pnpm --filter @latex-ide/desktop dev",
+    "desktop:web": "DESKTOP_MODE=1 pnpm --filter @latex-ide/web dev"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  }
+}
