@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAIProvider } from "@/server/ai";
+import { getProviderForUser } from "@/server/ai/config";
 import { requireUser } from "@/server/session";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ Rules:
 
 export async function POST(req: Request) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const body = (await req.json()) as { text?: string };
     const text = String(body.text || "").trim();
     if (!text) {
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "text too long (max 4000 chars)" }, { status: 400 });
     }
 
-    const provider = getAIProvider();
+    const { provider } = await getProviderForUser(user.id);
     const res = await provider.chat({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },

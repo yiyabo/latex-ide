@@ -145,6 +145,9 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     setTranslation(null);
     setTransError(null);
     setTranslating(false);
+    // Also clear the browser's native PDF text selection; otherwise the next
+    // mouseup sees the old range and immediately recreates the popup.
+    window.getSelection()?.removeAllRanges();
   }, []);
 
   const addHighlight = useCallback(() => {
