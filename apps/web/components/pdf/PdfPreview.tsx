@@ -67,6 +67,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   const [translating, setTranslating] = useState(false);
   const [transError, setTransError] = useState<string | null>(null);
   const selTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressNextMouseUp = useRef(false);
 
   // Highlights (in-memory for now; keyed by page)
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -85,6 +86,10 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     if (!container) return;
 
     const handleMouseUp = () => {
+      if (suppressNextMouseUp.current) {
+        suppressNextMouseUp.current = false;
+        return;
+      }
       if (selTimer.current) clearTimeout(selTimer.current);
       selTimer.current = setTimeout(() => {
         const sel = window.getSelection();
@@ -306,6 +311,9 @@ function PdfPreviewInner({ url }: { url: string | null }) {
             {/* Toolbar row */}
             <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
               <button
+                onMouseDown={() => {
+                  suppressNextMouseUp.current = true;
+                }}
                 onClick={() => setTool("translate")}
                 className={`flex items-center gap-1 rounded px-2 py-1 text-2xs ${
                   tool === "translate" ? "bg-accent-soft text-accent" : "text-muted hover:text-ink"
@@ -315,6 +323,9 @@ function PdfPreviewInner({ url }: { url: string | null }) {
                 <Sparkles size={12} /> 翻译
               </button>
               <button
+                onMouseDown={() => {
+                  suppressNextMouseUp.current = true;
+                }}
                 onClick={addHighlight}
                 className="flex items-center gap-1 rounded px-2 py-1 text-2xs text-muted hover:text-ink"
                 title="高亮选中内容"
@@ -323,6 +334,9 @@ function PdfPreviewInner({ url }: { url: string | null }) {
               </button>
               <div className="flex-1" />
               <button
+                onMouseDown={() => {
+                  suppressNextMouseUp.current = true;
+                }}
                 onClick={dismissPopup}
                 className="rounded px-1.5 py-1 text-2xs text-muted hover:text-ink"
               >
