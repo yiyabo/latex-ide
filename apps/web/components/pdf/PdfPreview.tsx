@@ -112,7 +112,11 @@ function PdfPreviewInner({ url }: { url: string | null }) {
       document.removeEventListener("mouseup", handleMouseUp);
       if (selTimer.current) clearTimeout(selTimer.current);
     };
-  }, []);
+    // Re-attach when the preview mounts: with url === null the component
+    // renders the "No PDF yet" branch, containerRef is null, and the guard
+    // above returns early — without this dependency the listener would
+    // never attach after the first successful compile.
+  }, [url]);
 
   // Auto-translate when selection arrives with tool=translate (default)
   useEffect(() => {
