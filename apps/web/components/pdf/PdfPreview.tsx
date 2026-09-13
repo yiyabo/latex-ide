@@ -18,6 +18,8 @@ interface SelectionState {
   text: string;
   x: number;
   y: number;
+  page: number;
+  rects: Array<{ left: number; top: number; width: number; height: number }>;
 }
 
 /** Extract the English words from a text selection and ask the AI provider
@@ -111,10 +113,45 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         const hostRect = container.getBoundingClientRect();
+        const viewportRects = Array.from(range.getClientRects())
+          .map((r) => ({
+            left: r.left,
+            top: r.top,
+            width: r.width,
+            height: r.height,
+          }))
+          .filter((r) => r.width > 1 && r.height > 1);
+        const firstRect = viewportRects[0];
+        if (!firstRect) return;
+
+        let page = 1;
+        let pageEl: HTMLDivElement | undefined;
+        for (const [p, el] of pageRefs.current) {
+          const pageRect = el.getBoundingClientRect();
+          if (firstRect.top >= pageRect.top && firstRect.top < pageRect.bottom) {
+            page = p;
+            pageEl = el;
+            break;
+          }
+        }
+        const pageRect = pageEl?.getBoundingClientRect();
+        if (!pageRect) return;
+        const pageRelRects = viewportRects
+          .filter((r) => r.top >= pageRect.top && r.top < pageRect.bottom)
+          .map((r) => ({
+            left: r.left - pageRect.left,
+            top: r.top - pageRect.top,
+            width: r.width,
+            height: r.height,
+          }));
+        if (pageRelRects.length === 0) return;
+
         setSelection({
           text,
           x: rect.left - hostRect.left + rect.width / 2,
           y: rect.top - hostRect.top - 8,
+          page,
+          rects: pageRelRects,
         });
         // Default tool is translate: fire immediately on selection
         setTranslation(null);
@@ -157,62 +194,20 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   }, [selection, tool]);
 
   const addHighlight = useCallback(() => {
-    if (!selection) return;
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const container = containerRef.current;
-    if (!container) return;
-    const hostRect = container.getBoundingClientRect();
-
-    // Collect one client rect per rendered line of the selection
-    const range = sel.getRangeAt(0);
-    const rects = Array.from(range.getClientRects())
-      .map((r) => ({
-        left: r.left - hostRect.left,
-        top: r.top - hostRect.top,
-        width: r.width,
-        height: r.height,
-      }))
-      .filter((r) => r.width > 1 && r.height > 1);
-    if (rects.length === 0) return;
-
-    // Which page div contains the first rect?
-    let page = 1;
-    let pageEl: HTMLDivElement | undefined;
-    const firstRect = rects[0];
-    if (!firstRect) return;
-    for (const [p, el] of pageRefs.current) {
-      const pr = el.getBoundingClientRect();
-      if (firstRect.top + hostRect.top >= pr.top && firstRect.top + hostRect.top < pr.bottom) {
-        page = p;
-        pageEl = el;
-        break;
-      }
-    }
-    const pageRect = pageEl?.getBoundingClientRect();
-    if (!pageRect) return;
-
-    // Store rects relative to the page div so overlays stay glued while scrolling
-    const pageRelRects = rects.map((r) => ({
-      left: r.left - pageRect.left,
-      top: r.top - pageRect.top,
-      width: r.width,
-      height: r.height,
-    }));
+    if (!selection || selection.rects.length === 0) return;
 
     const color = HIGHLIGHT_COLORS[highlights.length % HIGHLIGHT_COLORS.length] ?? "#fde68a";
     setHighlights((prev) => [
       ...prev,
       {
-        page,
-        rects: pageRelRects,
+        page: selection.page,
+        rects: selection.rects,
         color,
         text: selection.text.slice(0, 200),
       },
     ]);
     setHighlightVersion((v) => v + 1);
     dismissPopup();
-    window.getSelection()?.removeAllRanges();
   }, [selection, dismissPopup, highlights.length]);
 
   const file = useMemo(() => (url ? { url } : null), [url]);
@@ -274,13 +269,15 @@ function PdfPreviewInner({ url }: { url: string | null }) {
                     {h.rects.map((r, ri) => (
                       <div
                         key={ri}
-                        className="absolute rounded-sm opacity-45"
+                        className="absolute rounded-sm"
                         style={{
                           left: r.left,
                           top: r.top,
                           width: r.width,
                           height: r.height,
                           backgroundColor: h.color,
+                          opacity: 0.45,
+                          zIndex: 10,
                         }}
                       />
                     ))}
