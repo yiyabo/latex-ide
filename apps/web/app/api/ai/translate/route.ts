@@ -1,5 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { NextResponse } from "next/server";
-import { getProviderForUser } from "@/server/ai/config";
+import { OpenAIProvider } from "@/server/ai/openai-provider";
 import { requireUser } from "@/server/session";
 
 export const runtime = "nodejs";
@@ -25,7 +27,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "text too long (max 4000 chars)" }, { status: 400 });
     }
 
-    const { provider } = await getProviderForUser(user.id);
+    void user;
+    const keyPath = path.join(
+      process.env.HOME || "/Users/Shared",
+      "Library/Application Support/com.yiyabo.desktop/deepseek.key",
+    );
+    const apiKey = (await readFile(keyPath, "utf8")).trim();
+    if (!apiKey) throw new Error("DeepSeek translation key is empty");
+
+    const endpoint = "https://api.deepseek.com/v1";
+    const provider = new OpenAIProvider(apiKey, "deepseek-flash", endpoint);
     const res = await provider.chat({
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
