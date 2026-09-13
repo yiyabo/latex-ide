@@ -404,13 +404,14 @@ export default function ProjectPage() {
             )}
 
             <div className="flex min-h-0 flex-1">
+              <PanelGroup
+                key={centerMode}
+                direction="horizontal"
+                autoSaveId={`yiyabo-center-${centerMode}`}
+              >
               {(centerMode === "split" || centerMode === "editor") && (
-                <div
-                  className={cn(
-                    "min-w-0 flex-1",
-                    centerMode === "split" && "border-r border-border",
-                  )}
-                >
+                <>
+                <Panel defaultSize={50} minSize={20}>
                   {activeFile && !loadingFile ? (
                     <LatexEditor
                       projectId={projectId}
@@ -428,13 +429,18 @@ export default function ProjectPage() {
                       )}
                     </div>
                   )}
-                </div>
+                </Panel>
+                {centerMode === "split" && (
+                  <PanelResizeHandle className="w-px bg-border hover:bg-accent transition-colors" />
+                )}
+                </>
               )}
               {(centerMode === "split" || centerMode === "preview") && (
-                <div className="min-w-0 flex-1">
+                <Panel defaultSize={50} minSize={20}>
                   <PdfPreview url={pdfUrl} />
-                </div>
+                </Panel>
               )}
+              </PanelGroup>
             </div>
 
             <CompileStatusBar status={compileStatus} onJump={jumpToDiagnostic} />
