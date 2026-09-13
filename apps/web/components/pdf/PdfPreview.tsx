@@ -70,6 +70,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   const [transError, setTransError] = useState<string | null>(null);
   const selTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressNextMouseUp = useRef(false);
+  const pdfHasFocus = useRef(false);
 
   // Highlights (in-memory for now; keyed by page)
   const [highlights, setHighlights] = useState<Highlight[]>([]);
@@ -96,6 +97,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     if (!container) return;
 
     const handleMouseUp = () => {
+      pdfHasFocus.current = true;
       if (suppressNextMouseUp.current) {
         suppressNextMouseUp.current = false;
         return;
@@ -210,6 +212,38 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     dismissPopup();
   }, [selection, dismissPopup, highlights.length]);
 
+  const removeLastHighlight = useCallback(() => {
+    setHighlights((prev) => {
+      if (prev.length === 0) return prev;
+      return prev.slice(0, -1);
+    });
+    setHighlightVersion((v) => v + 1);
+  }, []);
+
+  // Treat highlights like normal editor annotations: Command/Ctrl+Z removes
+  // the most recent one, without hijacking undo outside the PDF preview.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isUndo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z";
+      if (!isUndo || highlights.length === 0 || !pdfHasFocus.current) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
+      event.preventDefault();
+      removeLastHighlight();
+      dismissPopup();
+    };
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      pdfHasFocus.current = Boolean(target && containerRef.current?.contains(target));
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleMouseDown, true);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleMouseDown, true);
+    };
+  }, [dismissPopup, highlights.length, removeLastHighlight]);
+
   const file = useMemo(() => (url ? { url } : null), [url]);
 
   /* ---- reset when url changes ---- */
@@ -261,7 +295,18 @@ function PdfPreviewInner({ url }: { url: string | null }) {
               className="relative mb-4"
               data-page={i + 1}
             >
-              {/* Highlight overlays */}
+              <Page
+                pageNumber={i + 1}
+                width={680}
+                renderTextLayer
+                renderAnnotationLayer
+                loading={
+                  <div className="flex h-[880px] items-center justify-center rounded border border-border bg-white">
+                    <Loader2 className="animate-spin text-muted" />
+                  </div>
+                }
+              />
+              {/* Render after Page so the highlight is visible above canvas/text. */}
               {highlights
                 .filter((h) => h.page === i + 1)
                 .map((h, hi) => (
@@ -277,23 +322,11 @@ function PdfPreviewInner({ url }: { url: string | null }) {
                           height: r.height,
                           backgroundColor: h.color,
                           opacity: 0.45,
-                          zIndex: 10,
                         }}
                       />
                     ))}
                   </div>
                 ))}
-              <Page
-                pageNumber={i + 1}
-                width={680}
-                renderTextLayer
-                renderAnnotationLayer
-                loading={
-                  <div className="flex h-[880px] items-center justify-center rounded border border-border bg-white">
-                    <Loader2 className="animate-spin text-muted" />
-                  </div>
-                }
-              />
             </div>
           ))}
         </Document>
