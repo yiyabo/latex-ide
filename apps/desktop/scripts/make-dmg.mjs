@@ -4,7 +4,7 @@
  * (tauri's bundle_dmg.sh requires Finder automation permission and fails
  * in CI/headless environments; this keeps build:app fully unattended.)
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
@@ -40,6 +40,15 @@ execSync(
   { stdio: "inherit" },
 );
 rmSync(staging, { recursive: true, force: true });
+
+// Spotlight: keep the build tree out of indexing — a rebuilt target/ loses
+// its .metadata_never_index marker, and bundle/macos/yiyabo.app then shows
+// up in Spotlight as a second "yiyabo" next to /Applications/yiyabo.app.
+const neverIndex = path.join(tauriDir, "target/.metadata_never_index");
+if (!existsSync(neverIndex)) {
+  writeFileSync(neverIndex, "");
+  console.log("[make-dmg] restored target/.metadata_never_index");
+}
 
 const mb = (statSync(dmgPath).size / 1024 / 1024).toFixed(1);
 
