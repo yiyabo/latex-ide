@@ -80,6 +80,14 @@ function PdfPreviewInner({ url }: { url: string | null }) {
 
   const onDocumentLoadError = useCallback(() => setLoadError(true), []);
 
+  const dismissPopup = useCallback(() => {
+    setSelection(null);
+    setTranslation(null);
+    setTransError(null);
+    setTranslating(false);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
   /* ---- selection → popup ---- */
   useEffect(() => {
     const container = containerRef.current;
@@ -95,7 +103,10 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         const sel = window.getSelection();
         const text = sel?.toString().trim() ?? "";
         if (!sel || sel.isCollapsed || text.length < 2) {
-          return; // keep popup closed; don't clear an in-flight translation
+          // Clicking/dragging away from the PDF selection must close any
+          // existing translation popup instead of leaving stale content.
+          dismissPopup();
+          return;
         }
         const range = sel.getRangeAt(0);
         const rect = range.getBoundingClientRect();
@@ -121,7 +132,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     // renders the "No PDF yet" branch, containerRef is null, and the guard
     // above returns early — without this dependency the listener would
     // never attach after the first successful compile.
-  }, [url]);
+  }, [url, dismissPopup]);
 
   // Auto-translate when selection arrives with tool=translate (default)
   useEffect(() => {
@@ -144,16 +155,6 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, tool]);
-
-  const dismissPopup = useCallback(() => {
-    setSelection(null);
-    setTranslation(null);
-    setTransError(null);
-    setTranslating(false);
-    // Also clear the browser's native PDF text selection; otherwise the next
-    // mouseup sees the old range and immediately recreates the popup.
-    window.getSelection()?.removeAllRanges();
-  }, []);
 
   const addHighlight = useCallback(() => {
     if (!selection) return;
@@ -269,7 +270,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
               {highlights
                 .filter((h) => h.page === i + 1)
                 .map((h, hi) => (
-                  <div key={`h-${highlightVersion}-${hi}`} className="pointer-events-none absolute inset-0">
+                  <div key={`h-${highlightVersion}-${hi}`} className="pointer-events-none absolute inset-0 z-10">
                     {h.rects.map((r, ri) => (
                       <div
                         key={ri}
