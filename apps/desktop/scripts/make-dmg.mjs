@@ -42,4 +42,17 @@ execSync(
 rmSync(staging, { recursive: true, force: true });
 
 const mb = (statSync(dmgPath).size / 1024 / 1024).toFixed(1);
+
+// Clean tauri's intermediate rw.*.dmg shadow files — they mount as stray
+// "dmg.XXXX" volumes during Spotlight indexing and show up as duplicate apps.
+for (const f of readdirSync(path.join(tauriDir, "target/release/bundle/macos"))) {
+  if (f.startsWith("rw.") && f.endsWith(".dmg")) {
+    try {
+      execSync(`hdiutil detach "/Volumes/${f}" -quiet 2>/dev/null || true`, { shell: "/bin/zsh" });
+    } catch { /* ignore */ }
+    rmSync(path.join(tauriDir, "target/release/bundle/macos", f), { force: true });
+    console.log("[make-dmg] cleaned intermediate:", f);
+  }
+}
+
 console.log(`[make-dmg] done → ${dmgPath} (${mb} MB)`);
