@@ -359,7 +359,7 @@ export default function ProjectPage() {
       {/* Top bar */}
       <header
         data-tauri-drag-region
-        className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 pt-2"
+        className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 pl-[88px] pt-2"
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <button
