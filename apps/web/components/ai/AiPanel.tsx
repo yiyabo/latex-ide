@@ -504,10 +504,6 @@ export function AiPanel({
   const livePending = unlinkedPatches.filter(
     (p) => p.status === "pending" || p.status === "conflict",
   );
-  const liveHistory = unlinkedPatches.filter(
-    (p) => p.status === "applied" || p.status === "rejected" || p.status === "accepted",
-  );
-
   const renderPatch = (p: PatchItem) => {
     if (p.status === "pending" || p.status === "conflict") {
       return (
@@ -684,15 +680,6 @@ export function AiPanel({
           <div className="space-y-2 pt-1">{livePending.map(renderPatch)}</div>
         )}
 
-        {liveHistory.length > 0 && (
-          <div className="pt-1">
-            <div className="mb-1 flex items-center gap-1 text-2xs font-medium text-muted">
-              <History size={11} />
-              修改记录（{liveHistory.length}）
-            </div>
-            <div className="space-y-1.5">{liveHistory.map(renderPatch)}</div>
-          </div>
-        )}
       </div>
 
       {/* Quick actions */}
