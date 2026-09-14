@@ -14,8 +14,10 @@ import {
   Columns2,
   Eye,
   Loader2,
+  Minus,
   Moon,
   Play,
+  Plus,
   Save,
   Sun,
   X,
@@ -40,6 +42,8 @@ export default function ProjectPage() {
     setTheme,
     centerMode,
     setCenterMode,
+    editorFontSize,
+    setEditorFontSize,
     leftCollapsed,
     setLeftCollapsed,
     rightCollapsed,
@@ -322,6 +326,23 @@ export default function ProjectPage() {
               </button>
             ))}
           </div>
+          <div className="mr-1 flex items-center rounded-md border border-border" title="编辑器字号">
+            <button
+              onClick={() => setEditorFontSize(editorFontSize - 1)}
+              className="p-1.5 text-muted hover:bg-elevated hover:text-ink"
+              aria-label="缩小编辑器文字"
+            >
+              <Minus size={13} />
+            </button>
+            <span className="min-w-9 text-center text-2xs text-muted">{editorFontSize}px</span>
+            <button
+              onClick={() => setEditorFontSize(editorFontSize + 1)}
+              className="p-1.5 text-muted hover:bg-elevated hover:text-ink"
+              aria-label="放大编辑器文字"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
           <button
             onClick={() => void saveFile(contentRef.current, versionId)}
             className="rounded-md p-1.5 text-muted hover:bg-elevated hover:text-ink"
@@ -349,7 +370,7 @@ export default function ProjectPage() {
       </header>
 
       {/* Three panels */}
-      <PanelGroup direction="horizontal" className="flex-1">
+      <PanelGroup direction="horizontal" className="h-full min-h-0 flex-1 w-full">
         {/* Left: file tree */}
         {!leftCollapsed && (
           <>
@@ -360,7 +381,9 @@ export default function ProjectPage() {
                 onCollapse={() => setLeftCollapsed(true)}
               />
             </Panel>
-            <PanelResizeHandle className="w-px bg-border hover:bg-accent transition-colors" />
+            <PanelResizeHandle className="group relative w-2 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-accent/20">
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-accent" />
+            </PanelResizeHandle>
           </>
         )}
         {leftCollapsed && (
@@ -407,6 +430,7 @@ export default function ProjectPage() {
               <PanelGroup
                 key={centerMode}
                 direction="horizontal"
+                className="h-full min-h-0 w-full"
                 autoSaveId={`yiyabo-center-${centerMode}`}
               >
               {(centerMode === "split" || centerMode === "editor") && (
@@ -419,6 +443,7 @@ export default function ProjectPage() {
                       value={fileContent}
                       onChange={setFileContent}
                       onSave={(v) => void saveFile(v, versionId)}
+                      fontSize={editorFontSize}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-muted">
@@ -431,7 +456,9 @@ export default function ProjectPage() {
                   )}
                 </Panel>
                 {centerMode === "split" && (
-                  <PanelResizeHandle className="w-px bg-border hover:bg-accent transition-colors" />
+                  <PanelResizeHandle className="group relative w-2 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-accent/20">
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-accent" />
+            </PanelResizeHandle>
                 )}
                 </>
               )}
@@ -449,7 +476,9 @@ export default function ProjectPage() {
 
         {!rightCollapsed && (
           <>
-            <PanelResizeHandle className="w-px bg-border hover:bg-accent transition-colors" />
+            <PanelResizeHandle className="group relative w-2 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-accent/20">
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-accent" />
+            </PanelResizeHandle>
             <Panel defaultSize={30} minSize={20} maxSize={40}>
               <div className="h-full">
                 <AiPanel

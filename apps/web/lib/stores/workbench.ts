@@ -33,6 +33,7 @@ export type ConversationMeta = {
 type WorkbenchState = {
   theme: "light" | "dark";
   centerMode: CenterMode;
+  editorFontSize: number;
   leftCollapsed: boolean;
   rightCollapsed: boolean;
   activeFile: string | null;
@@ -49,6 +50,7 @@ type WorkbenchState = {
 
   setTheme: (t: "light" | "dark") => void;
   setCenterMode: (m: CenterMode) => void;
+  setEditorFontSize: (size: number) => void;
   setLeftCollapsed: (v: boolean) => void;
   setRightCollapsed: (v: boolean) => void;
   setActiveFile: (path: string | null) => void;
@@ -75,6 +77,7 @@ export const useWorkbench = create<WorkbenchState>()(
     (set, get) => ({
       theme: "light",
       centerMode: "split",
+      editorFontSize: 14,
       leftCollapsed: false,
       rightCollapsed: false,
       activeFile: null,
@@ -91,6 +94,8 @@ export const useWorkbench = create<WorkbenchState>()(
 
       setTheme: (theme) => set({ theme }),
       setCenterMode: (centerMode) => set({ centerMode }),
+      setEditorFontSize: (editorFontSize) =>
+        set({ editorFontSize: Math.max(10, Math.min(24, Math.round(editorFontSize))) }),
       setLeftCollapsed: (leftCollapsed) => set({ leftCollapsed }),
       setRightCollapsed: (rightCollapsed) => set({ rightCollapsed }),
       setActiveFile: (activeFile) => set({ activeFile, selection: null }),
@@ -145,6 +150,7 @@ export const useWorkbench = create<WorkbenchState>()(
       partialize: (s) => ({
         theme: s.theme,
         centerMode: s.centerMode,
+        editorFontSize: s.editorFontSize,
         leftCollapsed: s.leftCollapsed,
         rightCollapsed: s.rightCollapsed,
       }),

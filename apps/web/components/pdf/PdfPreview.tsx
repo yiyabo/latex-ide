@@ -58,6 +58,7 @@ const HIGHLIGHT_COLORS = ["#fde68a", "#a7f3d0", "#bfdbfe", "#fca5a5"];
 
 function PdfPreviewInner({ url }: { url: string | null }) {
   const [numPages, setNumPages] = useState(0);
+  const [pdfScale, setPdfScale] = useState(1);
   const [loadError, setLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -267,6 +268,36 @@ function PdfPreviewInner({ url }: { url: string | null }) {
 
   return (
     <div className="relative h-full w-full">
+      <div className="pointer-events-none absolute right-5 top-3 z-30 flex items-center gap-1 rounded-md border border-border bg-surface/95 p-1 shadow-md">
+        <button
+          type="button"
+          onClick={() => setPdfScale((s) => Math.max(0.6, Number((s - 0.1).toFixed(1))))}
+          className="pointer-events-auto rounded p-1 text-muted hover:bg-elevated hover:text-ink"
+          aria-label="缩小 PDF"
+          title="缩小 PDF"
+        >
+          −
+        </button>
+        <span className="min-w-10 text-center text-2xs text-muted">{Math.round(pdfScale * 100)}%</span>
+        <button
+          type="button"
+          onClick={() => setPdfScale((s) => Math.min(2, Number((s + 0.1).toFixed(1))))}
+          className="pointer-events-auto rounded p-1 text-muted hover:bg-elevated hover:text-ink"
+          aria-label="放大 PDF"
+          title="放大 PDF"
+        >
+          +
+        </button>
+        <button
+          type="button"
+          onClick={() => setPdfScale(1)}
+          className="pointer-events-auto rounded px-1.5 py-1 text-2xs text-muted hover:bg-elevated hover:text-ink"
+          aria-label="重置 PDF 缩放"
+          title="重置缩放"
+        >
+          适合
+        </button>
+      </div>
       <div ref={containerRef} className="thin-scroll h-full w-full overflow-auto bg-elevated/50 p-4">
         <Document
           file={file}
@@ -297,7 +328,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
             >
               <Page
                 pageNumber={i + 1}
-                width={680}
+                width={Math.round(680 * pdfScale)}
                 renderTextLayer
                 renderAnnotationLayer
                 loading={

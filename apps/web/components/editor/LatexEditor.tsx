@@ -50,17 +50,27 @@ export function LatexEditor({
   value,
   onChange,
   onSave,
+  fontSize = 14,
 }: {
   projectId: string;
   filePath: string;
   value: string;
   onChange?: (v: string) => void;
   onSave?: (v: string) => void;
+  fontSize?: number;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const themeComp = useRef(new Compartment());
+  const fontComp = useRef(new Compartment());
   const { theme, setSelection, showToast, setSaveState } = useWorkbench();
+  const fontTheme = useCallback(
+    () => EditorView.theme({
+      ".cm-content": { fontSize: `${fontSize}px` },
+      ".cm-gutter": { fontSize: `${fontSize}px` },
+    }),
+    [fontSize],
+  );
   const valueRef = useRef(value);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -117,6 +127,7 @@ export function LatexEditor({
         keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap, indentWithTab]),
         saveKeymap,
         themeComp.current.of(theme === "dark" ? oneDark : []),
+        fontComp.current.of(fontTheme()),
         EditorView.updateListener.of((u) => {
           if (u.docChanged) {
             const doc = u.state.doc.toString();
@@ -137,7 +148,8 @@ export function LatexEditor({
         }),
         EditorView.theme({
           "&": { height: "100%" },
-          ".cm-content": { caretColor: "rgb(var(--accent))" },
+          ".cm-content": { caretColor: "rgb(var(--accent))", fontSize: `${fontSize}px` },
+          ".cm-gutter": { fontSize: `${fontSize}px` },
         }),
       ],
     });
@@ -155,13 +167,16 @@ export function LatexEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, filePath]);
 
-  // Theme
+  // Theme and editor zoom
   useEffect(() => {
     if (!viewRef.current) return;
     viewRef.current.dispatch({
-      effects: themeComp.current.reconfigure(theme === "dark" ? oneDark : []),
+      effects: [
+        themeComp.current.reconfigure(theme === "dark" ? oneDark : []),
+        fontComp.current.reconfigure(fontTheme()),
+      ],
     });
-  }, [theme]);
+  }, [theme, fontTheme]);
 
   // External value sync
   useEffect(() => {
