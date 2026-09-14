@@ -593,15 +593,32 @@ async function selectionFromFileArgs(
   projectId: string,
 ): Promise<EditorSelectionContext> {
   let filePath = String(args.filePath || "").trim();
+  const rawOps = (args.operations || []) as Array<Record<string, unknown>>;
+  const expected = String(rawOps[0]?.expectedOldText ?? "");
   if (!filePath) {
-    // Models frequently omit filePath when no selection is active. Fall back
-    // to the project entry file — the overwhelmingly common edit target for
-    // "优化摘要 / 润色正文" style requests.
-    const proj = await db.project.findUnique({
-      where: { id: projectId },
-      select: { entryFile: true },
-    });
-    filePath = proj?.entryFile || "";
+    // Models sometimes omit filePath after reading an included table/section.
+    // Resolve by the exact patch anchor before falling back to the entry file.
+    const files = await listFiles(projectId);
+    const matches: string[] = [];
+    if (expected) {
+      for (const meta of files) {
+        if (meta.isBinary) continue;
+        try {
+          const candidate = await readFileContent(projectId, meta.path);
+          if (candidate.content.includes(expected)) matches.push(meta.path);
+        } catch {
+          // Keep searching other project files.
+        }
+      }
+    }
+    if (matches.length === 1) filePath = matches[0]!;
+    if (!filePath) {
+      const proj = await db.project.findUnique({
+        where: { id: projectId },
+        select: { entryFile: true },
+      });
+      filePath = proj?.entryFile || "";
+    }
     if (!filePath) {
       throw new Error(
         'no "filePath" in propose_patch args and project has no entryFile (no editor selection is active)',
@@ -699,37 +716,54 @@ export async function acceptPatch(patchId: string, userId: string) {
     include: { conversation: { include: { project: true } } },
   });
   if (!patch) throw new NotFoundError("Patch not found");
-  if (patch.status !== "pending") {
+  // A conflict is retryable: the document may have changed only because the
+  // first proposal pointed at the wrong file. Re-resolve it safely below.
+  if (patch.status !== "pending" && patch.status !== "conflict") {
     throw new ConflictError(`Patch already ${patch.status}`);
   }
   const project = patch.conversation.project;
   if (project.ownerId !== userId) throw new NotFoundError("Patch not found");
 
   const ops = patch.operations as unknown as PatchOperation[];
-  // Apply ops sequentially on current content
   let currentPath = ops[0]?.filePath;
   if (!currentPath) throw new Error("No operations");
 
-  const { content, latest } = await readFileContent(project.id, currentPath);
-  let text = content;
-
-  // Validate all ops against current text before writing
-  const sorted = [...ops].sort((a, b) => a.start - b.start);
-  for (const op of sorted) {
-    if (op.filePath !== currentPath) {
-      throw new ConflictError("Multi-file patches not supported in v1");
-    }
-    const actual = text.slice(op.start, op.end);
-    if (actual !== op.expectedOldText) {
-      // Try to re-locate
-      const idx = text.indexOf(op.expectedOldText);
-      if (idx < 0) {
-        await db.patchProposal.update({
-          where: { id: patchId },
-          data: { status: "conflict" },
-        });
-        throw new ConflictError("Document changed since proposal was generated");
+  // AI proposals can occasionally carry the entry file while their anchor
+  // belongs to an included table/section file. If the anchor exists in one
+  // and only one text file, relocate the whole proposal before applying it.
+  let fileData = await readFileContent(project.id, currentPath);
+  const firstExpected = ops[0]?.expectedOldText || "";
+  if (firstExpected && !fileData.content.includes(firstExpected)) {
+    const candidates: Array<{ path: string; content: string }> = [];
+    for (const meta of await listFiles(project.id)) {
+      if (meta.isBinary || meta.path === currentPath) continue;
+      try {
+        const candidate = await readFileContent(project.id, meta.path);
+        if (candidate.content.includes(firstExpected)) {
+          candidates.push({ path: meta.path, content: candidate.content });
+        }
+      } catch {
+        // Ignore unreadable/binary candidates; the original path is still validated below.
       }
+    }
+    if (candidates.length === 1) {
+      currentPath = candidates[0]!.path;
+      fileData = await readFileContent(project.id, currentPath);
+    }
+  }
+  let text = fileData.content;
+
+  // Validate all ops against current text before writing.
+  const resolvedOps = ops.map((op) => ({ ...op, filePath: currentPath }));
+  const sorted = [...resolvedOps].sort((a, b) => a.start - b.start);
+  for (const op of sorted) {
+    const actual = text.slice(op.start, op.end);
+    if (actual !== op.expectedOldText && text.indexOf(op.expectedOldText) < 0) {
+      await db.patchProposal.update({
+        where: { id: patchId },
+        data: { status: "conflict" },
+      });
+      throw new ConflictError("Document changed since proposal was generated");
     }
   }
 
@@ -777,7 +811,7 @@ export async function acceptPatch(patchId: string, userId: string) {
     });
   });
 
-  return { versionId, content: text, latestVersionId: latest.id };
+  return { versionId, content: text, latestVersionId: fileData.latest.id };
 }
 
 export async function rejectPatch(patchId: string, userId: string) {

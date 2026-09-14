@@ -156,7 +156,7 @@ export function DiffView({
             disabled={busy}
             className="rounded-md bg-accent px-3 py-1 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
-            Accept
+            {proposal.status === "conflict" ? "重新应用" : "Accept"}
           </button>
           <button
             onClick={onReject}
