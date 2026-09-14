@@ -10,9 +10,50 @@ use tauri::{AppHandle, Manager, RunEvent, Url, WindowEvent};
 struct ServerState(Mutex<Option<Child>>);
 
 fn home_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        if let Some(p) = std::env::var_os("USERPROFILE") {
+            return PathBuf::from(p);
+        }
+    }
     std::env::var_os("HOME")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/Users/Shared"))
+        .unwrap_or_else(|| std::env::temp_dir())
+}
+
+fn node_command() -> &'static str {
+    #[cfg(windows)]
+    {
+        "where"
+    }
+    #[cfg(not(windows))]
+    {
+        "which"
+    }
+}
+
+fn node_path_candidates() -> Vec<PathBuf> {
+    let home = home_dir();
+    #[cfg(windows)]
+    {
+        vec![
+            home.join("AppData\\Local\\Programs\\nodejs\\node.exe"),
+            PathBuf::from(r"C:\Program Files\nodejs\node.exe"),
+            PathBuf::from(r"C:\Program Files (x86)\nodejs\node.exe"),
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        vec![
+            PathBuf::from("/opt/homebrew/bin/node"),
+            PathBuf::from("/usr/local/bin/node"),
+            PathBuf::from("/usr/bin/node"),
+            home.join(".local/bin/node"),
+            home.join(".volta/bin/node"),
+            home.join(".nvm/current/bin/node"),
+            home.join(".fnm/current/bin/node"),
+        ]
+    }
 }
 
 fn find_node() -> Option<PathBuf> {
@@ -22,37 +63,35 @@ fn find_node() -> Option<PathBuf> {
             return Some(pb);
         }
     }
-    // Absolute paths first — Finder-launched apps have a minimal PATH
-    let home = home_dir();
-    let mut candidates = vec![
-        PathBuf::from("/opt/homebrew/bin/node"),
-        PathBuf::from("/usr/local/bin/node"),
-        PathBuf::from("/usr/bin/node"),
-        home.join(".local/bin/node"),
-        home.join(".volta/bin/node"),
-        home.join(".nvm/current/bin/node"),
-        home.join(".fnm/current/bin/node"),
-    ];
-    // shallow nvm versions
-    let nvm_versions = home.join(".nvm/versions/node");
-    if let Ok(rd) = std::fs::read_dir(&nvm_versions) {
-        let mut vers: Vec<PathBuf> = rd
-            .filter_map(|e| e.ok())
-            .map(|e| e.path().join("bin/node"))
-            .filter(|p| p.exists())
-            .collect();
-        vers.sort();
-        vers.reverse();
-        candidates.extend(vers);
+    // GUI-launched apps often have a minimal PATH, so probe standard paths.
+    let mut candidates = node_path_candidates();
+    #[cfg(not(windows))]
+    {
+        let nvm_versions = home_dir().join(".nvm/versions/node");
+        if let Ok(rd) = std::fs::read_dir(&nvm_versions) {
+            let mut vers: Vec<PathBuf> = rd
+                .filter_map(|e| e.ok())
+                .map(|e| e.path().join("bin/node"))
+                .filter(|p| p.exists())
+                .collect();
+            vers.sort();
+            vers.reverse();
+            candidates.extend(vers);
+        }
     }
     for c in candidates {
         if c.exists() {
             return Some(c);
         }
     }
-    if let Ok(out) = Command::new("which").arg("node").output() {
+    if let Ok(out) = Command::new(node_command()).arg("node").output() {
         if out.status.success() {
-            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let s = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .to_string();
             if !s.is_empty() {
                 return Some(PathBuf::from(s));
             }
@@ -79,12 +118,20 @@ fn server_web_dir(app: &AppHandle) -> Option<PathBuf> {
         candidates.push(cwd.join("src-tauri/server-dist/apps/web"));
         candidates.push(cwd.join("server-dist/apps/web"));
     }
-    candidates.into_iter().find(|c| c.join("server.js").exists())
+    candidates
+        .into_iter()
+        .find(|c| c.join("server.js").exists())
 }
 
 fn server_root_from_web(web: &PathBuf) -> PathBuf {
     web.parent()
-        .and_then(|p| if p.ends_with("apps") { p.parent() } else { Some(p) })
+        .and_then(|p| {
+            if p.ends_with("apps") {
+                p.parent()
+            } else {
+                Some(p)
+            }
+        })
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| web.clone())
 }
@@ -98,8 +145,18 @@ fn app_data_dir(app: &AppHandle) -> Option<PathBuf> {
 fn wait_for_http(url: &str, timeout: Duration) -> bool {
     let start = std::time::Instant::now();
     while start.elapsed() < timeout {
-        if let Ok(out) = Command::new("curl")
-            .args(["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "2", url])
+        let probe = if cfg!(windows) { "curl.exe" } else { "curl" };
+        if let Ok(out) = Command::new(probe)
+            .args([
+                "-s",
+                "-o",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+                "-w",
+                "%{http_code}",
+                "--max-time",
+                "2",
+                url,
+            ])
             .output()
         {
             let code = String::from_utf8_lossy(&out.stdout);
@@ -113,8 +170,9 @@ fn wait_for_http(url: &str, timeout: Duration) -> bool {
 }
 
 fn spawn_server(app: &AppHandle) -> Result<(Child, String, PathBuf), String> {
-    let node = find_node()
-        .ok_or_else(|| "未找到 Node.js。请安装 Node 20+，或设置环境变量 YIYABO_NODE。".to_string())?;
+    let node = find_node().ok_or_else(|| {
+        "未找到 Node.js。请安装 Node 20+，或设置环境变量 YIYABO_NODE。".to_string()
+    })?;
     let web = server_web_dir(app)
         .ok_or_else(|| "应用资源中未找到内置服务 (server/apps/web/server.js)。".to_string())?;
     let data = app_data_dir(app).ok_or_else(|| "无法定位应用数据目录。".to_string())?;
@@ -148,9 +206,10 @@ fn spawn_server(app: &AppHandle) -> Result<(Child, String, PathBuf), String> {
     let url = format!("http://{}:{}", host, port);
 
     let log_path = logs.join("server.log");
-    let log_file =
-        std::fs::File::create(&log_path).map_err(|e| format!("无法写日志: {e}"))?;
-    let log_err = log_file.try_clone().map_err(|e| format!("clone log: {e}"))?;
+    let log_file = std::fs::File::create(&log_path).map_err(|e| format!("无法写日志: {e}"))?;
+    let log_err = log_file
+        .try_clone()
+        .map_err(|e| format!("clone log: {e}"))?;
 
     let mut cmd = Command::new(&node);
     cmd.arg(web.join("server.js"))
@@ -169,9 +228,7 @@ fn spawn_server(app: &AppHandle) -> Result<(Child, String, PathBuf), String> {
         // Make sibling node_modules visible
         .env(
             "NODE_PATH",
-            web.join("node_modules")
-                .to_string_lossy()
-                .to_string(),
+            web.join("node_modules").to_string_lossy().to_string(),
         )
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(log_err));
@@ -205,8 +262,13 @@ fn show_error(win: &tauri::WebviewWindow, msg: &str) {
         .replace('\\', "\\\\")
         .replace('\'', "\\'")
         .replace('\n', "<br/>");
+    let data_hint = if cfg!(windows) {
+        "请确认已安装 Node.js 20+。日志目录：%LOCALAPPDATA%\\yiyabo\\logs\\"
+    } else {
+        "请确认已安装 Node.js 20+。日志目录：~/Library/Application Support/com.yiyabo.desktop/logs/"
+    };
     let html = format!(
-        r#"document.body.innerHTML = '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:48px;max-width:640px;line-height:1.6"><h1 style="margin:0 0 12px">yiyabo</h1><p style="color:#b91c1c">无法启动本地服务</p><pre style="white-space:pre-wrap;background:#f5f5f4;padding:12px;border-radius:8px;font-size:12px">{escaped}</pre><p style="color:#666">请确认已安装 Node.js 20+。日志目录：~/Library/Application Support/com.yiyabo.desktop/logs/</p></div>';"#
+        r#"document.body.innerHTML = '<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;padding:48px;max-width:640px;line-height:1.6"><h1 style="margin:0 0 12px">yiyabo</h1><p style="color:#b91c1c">无法启动本地服务</p><pre style="white-space:pre-wrap;background:#f5f5f4;padding:12px;border-radius:8px;font-size:12px">{escaped}</pre><p style="color:#666">{data_hint}</p></div>';"#
     );
     let _ = win.eval(&html);
     let _ = win.show();

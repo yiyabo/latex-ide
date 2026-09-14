@@ -1,6 +1,24 @@
 # yiyabo — Desktop (Tauri)
 
-Native macOS app: embeds the Next.js workbench as a local server and opens it in a Tauri window.
+Cross-platform desktop app: embeds the Next.js workbench as a local server and opens it in a Tauri window.
+
+## Windows build
+
+Build on Windows 10/11 (x64):
+
+```powershell
+cd apps/desktop
+pnpm build:windows
+```
+
+Installers are written to:
+
+```text
+src-tauri/target/release/bundle/msi/yiyabo_0.1.0_x64_en-US.msi
+src-tauri/target/release/bundle/nsis/yiyabo_0.1.0_x64-setup.exe
+```
+
+The repository also provides `.github/workflows/windows-build.yml`, which builds on `windows-latest` and uploads both installers as a workflow artifact. Windows uses the bundled Tectonic engine at `src-tauri/resources/tectonic/tectonic.exe`; Node.js 20+ is still required to run the embedded Next.js server.
 
 ## Install (distribute)
 

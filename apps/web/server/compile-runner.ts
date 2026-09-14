@@ -65,8 +65,15 @@ function run(cmd: string, args: string[], cwd: string, timeoutMs: number): Promi
 }
 
 async function isExecutable(cmd: string): Promise<boolean> {
+  try {
+    const st = await stat(cmd);
+    if (st.isFile()) return true;
+  } catch {
+    // Continue with PATH lookup.
+  }
   return new Promise((resolve) => {
-    const child = spawn("which", [cmd], { stdio: "ignore" });
+    const locator = process.platform === "win32" ? "where.exe" : "which";
+    const child = spawn(locator, [cmd], { stdio: "ignore", windowsHide: true });
     child.on("close", (code: number | null) => resolve(code === 0));
     child.on("error", () => resolve(false));
   });
@@ -127,12 +134,14 @@ export async function findBundledTectonic(): Promise<string | null> {
   if (process.env.TECTONIC_PATH) candidates.push(process.env.TECTONIC_PATH);
   // Tauri resource dir (process.cwd() is <bundle>/Resources/server/apps/web)
   const cwd = process.cwd();
-  candidates.push(path.resolve(cwd, "../../../tectonic/tectonic")); // server/apps/web → Resources
-  candidates.push(path.resolve(cwd, "../../../../tectonic/tectonic"));
+  const tectonicName = process.platform === "win32" ? "tectonic.exe" : "tectonic";
+  candidates.push(path.resolve(cwd, `../../../tectonic/${tectonicName}`)); // server/apps/web → Resources
+  candidates.push(path.resolve(cwd, `../../../../tectonic/${tectonicName}`));
   // Dev repo layout
   candidates.push(
-    path.resolve(cwd, "../../../../resources/tectonic/tectonic"),
+    path.resolve(cwd, `../../../../resources/tectonic/${tectonicName}`),
   );
+  candidates.push(path.resolve(cwd, `../../../../resources/tectonic/${tectonicName}`));
   for (const c of candidates) {
     if (await isExecutable(c)) return c;
   }
@@ -238,7 +247,9 @@ export async function compileLocal(
             {
               severity: "error",
               message:
-                "未找到 LaTeX 引擎：本机未安装 TeX 发行版（如 MacTeX），应用内置引擎也不可用。请安装 MacTeX 后重试。",
+                process.platform === "win32"
+                  ? "未找到 LaTeX 引擎：应用内置 Tectonic 不可用，请安装 MiKTeX 或 TeX Live 后重试。"
+                  : "未找到 LaTeX 引擎：本机未安装 TeX 发行版（如 MacTeX），应用内置引擎也不可用。请安装 MacTeX 后重试。",
             },
           ],
           durationMs: Date.now() - started,
