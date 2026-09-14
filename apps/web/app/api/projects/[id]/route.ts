@@ -2,7 +2,7 @@ import { z } from "zod";
 import { requireUser, requireProject, handleApiError, NotFoundError } from "@/server/session";
 import { db } from "@/server/db";
 
-const PatchBody = z.object({ name: z.string().min(1).max(120).optional() });
+const PatchBody = z.object({ name: z.string().trim().min(1).max(120).optional() });
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {

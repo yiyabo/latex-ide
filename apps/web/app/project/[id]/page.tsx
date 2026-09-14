@@ -9,6 +9,7 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import {
+  Check,
   ChevronLeft,
   Code2,
   Columns2,
@@ -16,6 +17,7 @@ import {
   Loader2,
   Minus,
   Moon,
+  Pencil,
   Play,
   Plus,
   Save,
@@ -70,6 +72,9 @@ export default function ProjectPage() {
   const [fileSearch, setFileSearch] = useState("");
   const [aiFixRequest, setAiFixRequest] = useState<{ id: string; message: string } | undefined>();
   const [projectName, setProjectName] = useState("");
+  const [editingProjectName, setEditingProjectName] = useState(false);
+  const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [savingProjectName, setSavingProjectName] = useState(false);
   const [desktopMode, setDesktopMode] = useState(false);
   const contentRef = useRef(fileContent);
   contentRef.current = fileContent;
@@ -198,6 +203,31 @@ export default function ProjectPage() {
     },
     [projectId, activeFile, setSaveState, showToast],
   );
+
+  const renameCurrentProject = useCallback(async () => {
+    const nextName = projectNameDraft.trim();
+    if (!nextName || savingProjectName) return;
+    setSavingProjectName(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.project) {
+        showToast(data.error || "重命名失败");
+        return;
+      }
+      setProjectName(data.project.name);
+      setEditingProjectName(false);
+      showToast("项目名称已更新");
+    } catch {
+      showToast("重命名失败");
+    } finally {
+      setSavingProjectName(false);
+    }
+  }, [projectId, projectNameDraft, savingProjectName, showToast]);
 
   const compile = useCallback(async () => {
     setCompiling(true);
@@ -328,7 +358,41 @@ export default function ProjectPage() {
           </button>
           <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-xs font-bold text-white shadow-sm">Y</div>
           <div className="min-w-0">
-            <h1 className="truncate text-[13px] font-semibold tracking-tight">{projectName || "Project"}</h1>
+            {editingProjectName ? (
+              <form
+                className="flex items-center gap-1"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void renameCurrentProject();
+                }}
+              >
+                <input
+                  autoFocus
+                  value={projectNameDraft}
+                  onChange={(e) => setProjectNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") setEditingProjectName(false);
+                  }}
+                  className="w-44 rounded border border-accent bg-surface px-1.5 py-0.5 text-[13px] font-semibold outline-none"
+                  aria-label="项目名称"
+                />
+                <button type="submit" disabled={savingProjectName || !projectNameDraft.trim()} className="rounded p-1 text-accent hover:bg-accent-soft disabled:opacity-40" title="保存项目名称">
+                  <Check size={13} />
+                </button>
+              </form>
+            ) : (
+              <button
+                onClick={() => {
+                  setProjectNameDraft(projectName);
+                  setEditingProjectName(true);
+                }}
+                className="group flex max-w-full items-center gap-1 text-left"
+                title="重命名项目"
+              >
+                <h1 className="truncate text-[13px] font-semibold tracking-tight">{projectName || "Project"}</h1>
+                <Pencil size={11} className="shrink-0 text-muted opacity-0 transition group-hover:opacity-100" />
+              </button>
+            )}
             <p className="truncate text-[10px] text-muted">{activeFile || "LaTeX research workspace"}</p>
           </div>
         </div>

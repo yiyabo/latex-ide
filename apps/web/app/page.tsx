@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { FileText, Loader2, LogOut, Plus, Trash2, Upload, FolderUp } from "lucide-react";
+import { Check, FileText, Loader2, LogOut, Pencil, Plus, Trash2, Upload, X, FolderUp } from "lucide-react";
 import Link from "next/link";
 import { Toast } from "@/components/ui/Toast";
 
@@ -26,6 +26,43 @@ export default function HomePage() {
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [renaming, setRenaming] = useState(false);
+
+  const startRename = (project: Project) => {
+    setEditingProjectId(project.id);
+    setEditingName(project.name);
+  };
+
+  const cancelRename = () => {
+    if (renaming) return;
+    setEditingProjectId(null);
+    setEditingName("");
+  };
+
+  const renameProject = async (id: string) => {
+    const nextName = editingName.trim();
+    if (!nextName || renaming) return;
+    setRenaming(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.project) {
+        alert(data.error || "Failed to rename project");
+        return;
+      }
+      setProjects((current) => current.map((p) => p.id === id ? { ...p, name: data.project.name } : p));
+      setEditingProjectId(null);
+      setEditingName("");
+    } finally {
+      setRenaming(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/app-info")
@@ -244,24 +281,76 @@ export default function HomePage() {
             <ul className="divide-y divide-border rounded-lg border border-border">
               {projects.map((p) => (
                 <li key={p.id} className="flex items-center justify-between px-4 py-3">
-                  <Link
-                    href={`/project/${p.id}`}
-                    className="flex items-center gap-3 hover:text-accent"
-                  >
-                    <FileText size={16} className="text-muted" />
-                    <div>
-                      <div className="text-sm font-medium">{p.name}</div>
-                      <div className="text-2xs text-muted">
-                        {p.entryFile} · updated {new Date(p.updatedAt).toLocaleString()}
-                      </div>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <FileText size={16} className="shrink-0 text-muted" />
+                    {editingProjectId === p.id ? (
+                      <form
+                        className="flex min-w-0 items-center gap-1.5"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          void renameProject(p.id);
+                        }}
+                      >
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") cancelRename();
+                          }}
+                          className="w-56 rounded-md border border-accent bg-surface px-2 py-1 text-sm outline-none"
+                          aria-label="项目名称"
+                        />
+                        <button
+                          type="submit"
+                          disabled={renaming || !editingName.trim()}
+                          className="rounded-md p-1.5 text-accent hover:bg-accent-soft disabled:opacity-40"
+                          title="保存项目名称"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelRename}
+                          disabled={renaming}
+                          className="rounded-md p-1.5 text-muted hover:bg-elevated disabled:opacity-40"
+                          title="取消重命名"
+                        >
+                          <X size={14} />
+                        </button>
+                      </form>
+                    ) : (
+                      <Link
+                        href={`/project/${p.id}`}
+                        className="min-w-0 hover:text-accent"
+                      >
+                        <div className="truncate text-sm font-medium">{p.name}</div>
+                        <div className="text-2xs text-muted">
+                          {p.entryFile} · updated {new Date(p.updatedAt).toLocaleString()}
+                        </div>
+                      </Link>
+                    )}
+                  </div>
+                  {editingProjectId !== p.id && (
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() => startRename(p)}
+                        className="rounded p-1.5 text-muted hover:bg-elevated hover:text-ink"
+                        title="重命名项目"
+                        aria-label={`重命名 ${p.name}`}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        onClick={() => remove(p.id)}
+                        className="rounded p-1.5 text-muted hover:bg-danger/10 hover:text-danger"
+                        title="删除项目"
+                        aria-label={`删除 ${p.name}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                  </Link>
-                  <button
-                    onClick={() => remove(p.id)}
-                    className="rounded p-1.5 text-muted hover:bg-danger/10 hover:text-danger"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  )}
                 </li>
               ))}
             </ul>
