@@ -689,20 +689,28 @@ export function AiPanel({
             e.preventDefault();
             void send(input);
           }}
-          className="flex items-end gap-2"
+          onMouseDown={(e) => e.stopPropagation()}
+          className="relative z-10 flex items-end gap-2"
         >
           <textarea
+            id="ai-assistant-input"
+            name="message"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 void send(input);
               }
             }}
-            placeholder="Ask the assistant…"
+            placeholder="输入问题或指令…"
+            aria-label="输入问题或指令"
+            autoComplete="off"
+            spellCheck={false}
             rows={2}
-            className="thin-scroll flex-1 resize-none rounded-md border border-border bg-bg px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+            className="thin-scroll relative z-10 flex-1 resize-none rounded-md border border-border bg-bg px-2.5 py-1.5 text-[13px] outline-none focus:border-accent focus:ring-1 focus:ring-accent/30"
           />
           <button
             type="submit"
