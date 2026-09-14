@@ -228,7 +228,14 @@ function PdfPreviewInner({ url }: { url: string | null }) {
       const isUndo = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z";
       if (!isUndo || highlights.length === 0 || !pdfHasFocus.current) return;
       const target = event.target as HTMLElement | null;
-      if (target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
+      if (
+        target?.isContentEditable ||
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        Boolean(target?.closest('textarea, input, [contenteditable="true"]'))
+      ) {
+        return;
+      }
       event.preventDefault();
       removeLastHighlight();
       dismissPopup();

@@ -93,6 +93,7 @@ export function AiPanel({
   } = useWorkbench();
 
   const [input, setInput] = useState("");
+  const composingInput = useRef(false);
   const [streaming, setStreaming] = useState(false);
   const [streamBuf, setStreamBuf] = useState("");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -687,6 +688,7 @@ export function AiPanel({
         <form
           onSubmit={(e) => {
             e.preventDefault();
+            if (composingInput.current) return;
             void send(input);
           }}
           onMouseDown={(e) => e.stopPropagation()}
@@ -697,10 +699,18 @@ export function AiPanel({
             name="message"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onCompositionStart={() => {
+              composingInput.current = true;
+            }}
+            onCompositionEnd={() => {
+              composingInput.current = false;
+            }}
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              const native = e.nativeEvent as KeyboardEvent;
+              const composing = composingInput.current || native.isComposing || e.keyCode === 229;
+              if (e.key === "Enter" && !e.shiftKey && !composing) {
                 e.preventDefault();
                 void send(input);
               }
