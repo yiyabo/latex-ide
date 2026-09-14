@@ -19,6 +19,7 @@ interface SelectionState {
   x: number;
   y: number;
   page: number;
+  /** Rectangles expressed as percentage of the page: invariant under zoom. */
   rects: Array<{ left: number; top: number; width: number; height: number }>;
 }
 
@@ -53,6 +54,8 @@ interface Highlight {
 // One muted academic annotation color: emphasis without turning the page into confetti.
 const HIGHLIGHT_COLOR = "#E6C65C";
 const HIGHLIGHT_OPACITY = 0.24;
+const PAGE_BASE_WIDTH = 680;
+const PAGE_HORIZONTAL_PADDING = 32;
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -60,7 +63,7 @@ type Rect = { left: number; top: number; width: number; height: number };
 function mergeLineRects(rects: Rect[]): Rect[] {
   const rows: Rect[][] = [];
   for (const rect of [...rects].sort((a, b) => a.top - b.top || a.left - b.left)) {
-    const row = rows.find((r) => Math.abs((r[0]?.top ?? 0) - rect.top) < Math.max(3, rect.height * 0.35));
+    const row = rows.find((r) => Math.abs((r[0]?.top ?? 0) - rect.top) < Math.max(0.4, rect.height * 0.35));
     if (row) row.push(rect);
     else rows.push([rect]);
   }
@@ -88,6 +91,7 @@ function mergeLineRects(rects: Rect[]): Rect[] {
 function PdfPreviewInner({ url }: { url: string | null }) {
   const [numPages, setNumPages] = useState(0);
   const [pdfScale, setPdfScale] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
   const [loadError, setLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -105,6 +109,22 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   // Highlights (in-memory for now; keyed by page)
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [highlightVersion, setHighlightVersion] = useState(0); // bump to re-render overlays
+
+  const recalculateFit = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const availableWidth = Math.max(240, container.clientWidth - PAGE_HORIZONTAL_PADDING);
+    setFitScale(Math.min(1.25, Math.max(0.35, availableWidth / PAGE_BASE_WIDTH)));
+  }, []);
+
+  useEffect(() => {
+    recalculateFit();
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(recalculateFit);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [recalculateFit, url]);
 
   const onDocumentLoadSuccess = useCallback((pdf: { numPages: number }) => {
     setNumPages(pdf.numPages);
@@ -171,10 +191,10 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         const pageRelRects = viewportRects
           .filter((r) => r.top >= pageRect.top && r.top < pageRect.bottom)
           .map((r) => ({
-            left: r.left - pageRect.left,
-            top: r.top - pageRect.top,
-            width: r.width,
-            height: r.height,
+            left: ((r.left - pageRect.left) / pageRect.width) * 100,
+            top: ((r.top - pageRect.top) / pageRect.height) * 100,
+            width: (r.width / pageRect.width) * 100,
+            height: (r.height / pageRect.height) * 100,
           }));
         if (pageRelRects.length === 0) return;
 
@@ -325,12 +345,12 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         </button>
         <button
           type="button"
-          onClick={() => setPdfScale(1)}
+          onClick={() => setPdfScale(fitScale)}
           className="pointer-events-auto rounded px-1.5 py-1 text-2xs text-muted hover:bg-elevated hover:text-ink"
-          aria-label="重置 PDF 缩放"
-          title="重置缩放"
+          aria-label="适合当前预览窗口"
+          title="适合当前预览窗口"
         >
-          适合
+          适合窗口
         </button>
       </div>
       <div ref={containerRef} className="thin-scroll h-full w-full overflow-auto bg-elevated/50 p-4">
@@ -382,10 +402,10 @@ function PdfPreviewInner({ url }: { url: string | null }) {
                         key={ri}
                         className="absolute rounded-sm"
                         style={{
-                          left: r.left,
-                          top: r.top,
-                          width: r.width,
-                          height: r.height,
+                          left: `${r.left}%`,
+                          top: `${r.top}%`,
+                          width: `${r.width}%`,
+                          height: `${r.height}%`,
                           backgroundColor: h.color,
                           opacity: HIGHLIGHT_OPACITY,
                         }}
