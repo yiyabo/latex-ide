@@ -31,6 +31,7 @@ import {
   realpathSync,
 } from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
