@@ -347,7 +347,10 @@ export default function ProjectPage() {
   return (
     <div className="workspace-shell flex h-screen flex-col text-ink">
       {/* Top bar */}
-      <header className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+      <header
+        data-tauri-drag-region
+        className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 pt-2"
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           <button
             onClick={() => router.push("/")}
