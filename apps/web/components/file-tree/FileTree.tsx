@@ -20,11 +20,13 @@ export function FileTree({
   onRefresh,
   onOpenFile,
   onCollapse,
+  query = "",
 }: {
   tree: FileTreeNode[];
   onRefresh?: () => void;
   onOpenFile?: (path: string) => void;
   onCollapse?: () => void;
+  query?: string;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   const handleRefresh = useCallback(async () => {
@@ -37,46 +39,61 @@ export function FileTree({
       setTimeout(() => setRefreshing(false), 400);
     }
   }, [onRefresh, refreshing]);
+  const needle = query.trim().toLowerCase();
+  const visibleTree = needle ? filterTree(tree, needle) : tree;
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1.5">
+    <div className="workspace-panel flex h-full flex-col">
+      <div className="flex items-center justify-between px-3.5 pb-2 pt-3.5">
+        <div className="flex min-w-0 items-center gap-2">
           {onCollapse && (
             <button
               onClick={onCollapse}
-              className="rounded p-0.5 text-muted hover:bg-elevated hover:text-ink"
+              className="rounded-md p-1 text-muted transition hover:bg-elevated hover:text-ink"
               title="收起文件栏"
             >
-              <ChevronLeft size={13} />
+              <ChevronLeft size={14} />
             </button>
           )}
-          <span className="truncate text-2xs font-semibold uppercase tracking-wider text-muted">
-            Files
-          </span>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Workspace</p>
+            <p className="mt-0.5 text-xs font-semibold text-ink">项目文件</p>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
-          {onRefresh && (
-            <button
-              onClick={() => void handleRefresh()}
-              className="rounded p-1 text-muted hover:bg-elevated hover:text-ink disabled:opacity-50"
-              title="刷新文件列表"
-              disabled={refreshing}
-            >
-              <RefreshCw
-                size={13}
-                className={cn(refreshing && "animate-spin")}
-              />
-            </button>
-          )}
-        </div>
+        {onRefresh && (
+          <button
+            onClick={() => void handleRefresh()}
+            className="rounded-md p-1.5 text-muted transition hover:bg-elevated hover:text-ink disabled:opacity-50"
+            title="刷新文件列表"
+            disabled={refreshing}
+          >
+            <RefreshCw size={14} className={cn(refreshing && "animate-spin")} />
+          </button>
+        )}
       </div>
-      <div className="thin-scroll flex-1 overflow-y-auto py-1">
-        {tree.map((node) => (
+      <div className="mx-3.5 border-t border-border" />
+      <div className="thin-scroll flex-1 overflow-y-auto px-2.5 py-2.5">
+        {visibleTree.length > 0 ? visibleTree.map((node) => (
           <TreeNode key={node.path} node={node} depth={0} onOpenFile={onOpenFile} />
-        ))}
+        )) : (
+          <p className="px-2 py-5 text-center text-xs text-muted">没有匹配的文件</p>
+        )}
       </div>
     </div>
   );
+}
+
+function filterTree(nodes: FileTreeNode[], needle: string): FileTreeNode[] {
+  return nodes.flatMap((node) => {
+    const children = node.children ? filterTree(node.children, needle) : undefined;
+    const selfMatches = node.name.toLowerCase().includes(needle) || node.path.toLowerCase().includes(needle);
+    if (node.type === "directory") {
+      return selfMatches || (children && children.length > 0)
+        ? [{ ...node, children: selfMatches ? node.children : children }]
+        : [];
+    }
+    return selfMatches ? [node] : [];
+  });
 }
 
 function TreeNode({
@@ -106,8 +123,8 @@ function TreeNode({
       <button
         onClick={handleClick}
         className={cn(
-          "flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-[13px] hover:bg-elevated",
-          isActive && "bg-accent-soft text-accent",
+          "flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[13px] transition hover:bg-elevated",
+          isActive && "bg-accent-soft font-medium text-accent",
         )}
         style={{ paddingLeft: `${8 + depth * 14}px` }}
       >

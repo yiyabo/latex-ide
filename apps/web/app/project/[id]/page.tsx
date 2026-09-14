@@ -19,6 +19,7 @@ import {
   Play,
   Plus,
   Save,
+  Search,
   Sun,
   X,
 } from "lucide-react";
@@ -66,6 +67,7 @@ export default function ProjectPage() {
   const [versionId, setVersionId] = useState<string | undefined>();
   const [loadingFile, setLoadingFile] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [fileSearch, setFileSearch] = useState("");
   const [projectName, setProjectName] = useState("");
   const [desktopMode, setDesktopMode] = useState(false);
   const contentRef = useRef(fileContent);
@@ -291,19 +293,34 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="flex h-screen flex-col bg-bg text-ink">
+    <div className="workspace-shell flex h-screen flex-col text-ink">
       {/* Top bar */}
-      <header className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/")} className="text-muted hover:text-ink">
-            <ChevronLeft size={16} />
+      <header className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <button
+            onClick={() => router.push("/")}
+            className="rounded-md p-1.5 text-muted transition hover:bg-elevated hover:text-ink"
+            title="返回项目列表"
+          >
+            <ChevronLeft size={17} />
           </button>
-          <h1 className="text-sm font-medium">{projectName || "Project"}</h1>
-          {activeFile && (
-            <span className="text-2xs text-muted font-mono">{activeFile}</span>
-          )}
+          <div className="grid h-7 w-7 place-items-center rounded-lg bg-accent text-xs font-bold text-white shadow-sm">Y</div>
+          <div className="min-w-0">
+            <h1 className="truncate text-[13px] font-semibold tracking-tight">{projectName || "Project"}</h1>
+            <p className="truncate text-[10px] text-muted">{activeFile || "LaTeX research workspace"}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <label className="workspace-command mx-auto hidden min-w-[260px] max-w-[430px] flex-1 items-center gap-2 rounded-lg border border-border bg-elevated/70 px-3 py-2 text-muted transition focus-within:border-accent/50 md:flex">
+          <Search size={14} />
+          <input
+            value={fileSearch}
+            onChange={(e) => setFileSearch(e.target.value)}
+            placeholder="搜索文件、符号，或问 AI…"
+            className="w-full bg-transparent text-xs text-ink outline-none placeholder:text-muted"
+          />
+          <kbd className="rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted">⌘K</kbd>
+        </label>
+        <div className="ml-auto flex items-center gap-1">
           {/* center mode */}
           <div className="mr-2 flex rounded-md border border-border">
             {(
@@ -377,6 +394,7 @@ export default function ProjectPage() {
             <Panel defaultSize={18} minSize={12} maxSize={30} className="border-r border-border">
               <FileTree
                 tree={tree}
+                query={fileSearch}
                 onRefresh={() => void loadTree()}
                 onCollapse={() => setLeftCollapsed(true)}
               />
@@ -401,15 +419,15 @@ export default function ProjectPage() {
           <div className="flex h-full flex-col">
             {/* Tabs */}
             {openFiles.length > 0 && (
-              <div className="flex shrink-0 items-center border-b border-border bg-elevated/40">
+              <div className="flex shrink-0 items-center gap-1 border-b border-border bg-elevated/55 px-2 pt-2">
                 {openFiles.map((f) => (
                   <div
                     key={f}
                     className={cn(
-                      "group flex items-center gap-1 border-r border-border px-3 py-1.5 text-2xs",
+                      "group flex items-center gap-1 rounded-t-md px-3 py-1.5 text-2xs transition",
                       activeFile === f
-                        ? "bg-surface text-ink"
-                        : "text-muted hover:text-ink",
+                        ? "border border-b-0 border-border bg-surface font-medium text-ink"
+                        : "text-muted hover:bg-surface/60 hover:text-ink",
                     )}
                   >
                     <button onClick={() => openFile(f)} className="max-w-[140px] truncate font-mono">

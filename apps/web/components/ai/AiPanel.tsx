@@ -501,14 +501,17 @@ export function AiPanel({
   };
 
   return (
-    <div className="flex h-full flex-col bg-surface">
+    <div className="workspace-panel flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Sparkles size={12} className="shrink-0 text-accent" />
-          <span className="truncate text-2xs font-semibold uppercase tracking-wider text-muted">
-            AI Assistant
-          </span>
+      <div className="flex items-center justify-between px-3.5 pb-2 pt-3.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="grid h-6 w-6 place-items-center rounded-md bg-accent-soft text-accent">
+            <Sparkles size={13} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Research copilot</p>
+            <p className="truncate text-xs font-semibold text-ink">AI Assistant</p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {/* Conversation switcher */}
