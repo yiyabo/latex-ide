@@ -142,36 +142,18 @@ export async function runChat(params: {
     let patchFailed = false; // persists across rounds until a patch succeeds
 
     if (repair) {
-      const filePath = repair.filePath?.trim();
+      const filePath = normalizeProjectPath(repair.filePath || "");
       if (!filePath) throw new Error("该诊断没有提供目标文件路径，无法安全生成补丁");
       const { content } = await readFileContent(projectId, filePath);
-      const lines = content.split("\n");
-      const line = Math.max(1, repair.line ?? 1);
-      const startLine = Math.max(1, line - 15);
-      const endLine = Math.min(lines.length, line + 15);
-      const snippet = lines
-        .slice(startLine - 1, endLine)
-        .map((text, index) => `${startLine + index}: ${text}`)
-        .join("\n");
-      const repairPrompt = [
-        "你是 LaTeX 定向修复器。只处理下面这一条诊断，不要调用工具，不要输出解释。",
-        "请返回一个 JSON 对象，格式必须是：{\"summary\":\"...\",\"filePath\":\"...\",\"operations\":[{\"type\":\"replace\",\"expectedOldText\":\"原文\",\"newText\":\"修改后\"}]}。",
-        "expectedOldText 必须逐字匹配代码片段；如果无法提出安全的局部修改，返回 {\"summary\":\"无法安全自动修复\",\"filePath\":\"...\",\"operations\":[] }。",
-        `诊断：${JSON.stringify(repair)}`,
-        `目标文件：${filePath}`,
-        `代码片段（${startLine}-${endLine} 行）：\n${snippet}`,
-      ].join("\n\n");
-      onEvent({ type: "status", message: "正在针对诊断生成最小修改建议…" });
-      const res = await provider.chat({
-        messages: [
-          { role: "system", content: "输出严格 JSON，不要 Markdown 代码围栏，不要调用工具。" },
-          { role: "user", content: repairPrompt },
-        ],
-        availableTools: [],
-        onStream: (token) => onEvent({ type: "token", content: token }),
-      });
-      const patchArgs = parseTargetedPatch(res.content, filePath);
-      if (patchArgs.operations.length > 0) {
+      const recovery = repair.severity === "error"
+        ? await findMalformedEntryRecovery(projectId, filePath, content)
+        : null;
+      if (recovery) {
+        const patchArgs = {
+          summary: "恢复被错误覆盖的主文档（请审阅）",
+          filePath,
+          operations: [{ type: "replace" as const, expectedOldText: content, newText: recovery }],
+        };
         patchProposal = await createPatchFromToolArgs({
           projectId,
           conversationId,
@@ -179,9 +161,47 @@ export async function runChat(params: {
           args: patchArgs,
         });
         onEvent({ type: "patch_proposal", proposal: patchProposal });
-        assistantText = "已针对这条诊断生成最小修改建议，请审阅并接受。";
-      } else {
-        assistantText = patchArgs.summary || "AI 无法为这条诊断生成安全的局部修改。";
+        assistantText = "检测到主文档曾被错误覆盖，已生成历史版本恢复建议，请审阅并接受。";
+      }
+      if (!recovery) {
+        const lines = content.split("\n");
+        const line = Math.max(1, repair.line ?? 1);
+        const startLine = Math.max(1, line - 15);
+        const endLine = Math.min(lines.length, line + 15);
+        const snippet = lines
+          .slice(startLine - 1, endLine)
+          .map((text, index) => `${startLine + index}: ${text}`)
+          .join("\n");
+        const repairPrompt = [
+          "你是 LaTeX 定向修复器。只处理下面这一条诊断，不要调用工具，不要输出解释。",
+          "请返回一个 JSON 对象，格式必须是：{\"summary\":\"...\",\"filePath\":\"...\",\"operations\":[{\"type\":\"replace\",\"expectedOldText\":\"原文\",\"newText\":\"修改后\"}]}。",
+          "expectedOldText 必须逐字匹配代码片段；如果无法提出安全的局部修改，返回 {\"summary\":\"无法安全自动修复\",\"filePath\":\"...\",\"operations\":[] }。",
+          `诊断：${JSON.stringify(repair)}`,
+          `目标文件：${filePath}`,
+          `代码片段（${startLine}-${endLine} 行）：\n${snippet}`,
+        ].join("\n\n");
+        onEvent({ type: "status", message: "正在针对诊断生成最小修改建议…" });
+        const res = await provider.chat({
+          messages: [
+            { role: "system", content: "输出严格 JSON，不要 Markdown 代码围栏，不要调用工具。" },
+            { role: "user", content: repairPrompt },
+          ],
+          availableTools: [],
+          onStream: (token) => onEvent({ type: "token", content: token }),
+        });
+        const patchArgs = parseTargetedPatch(res.content, filePath);
+        if (patchArgs.operations.length > 0) {
+          patchProposal = await createPatchFromToolArgs({
+            projectId,
+            conversationId,
+            selection: await selectionFromFileArgs(patchArgs, projectId),
+            args: patchArgs,
+          });
+          onEvent({ type: "patch_proposal", proposal: patchProposal });
+          assistantText = "已针对这条诊断生成最小修改建议，请审阅并接受。";
+        } else {
+          assistantText = patchArgs.summary || "AI 无法为这条诊断生成安全的局部修改。";
+        }
       }
     }
 
@@ -887,6 +907,39 @@ export async function acceptPatch(patchId: string, userId: string) {
   });
 
   return { versionId, content: text, latestVersionId: fileData.latest.id };
+}
+
+function normalizeProjectPath(filePath: string): string {
+  return filePath.trim().replace(/^\.\//, "");
+}
+
+async function findMalformedEntryRecovery(
+  projectId: string,
+  filePath: string,
+  currentContent: string,
+): Promise<string | null> {
+  const project = await db.project.findUnique({ where: { id: projectId } });
+  if (!project || normalizeProjectPath(project.entryFile) !== filePath) return null;
+  // A previous bad patch can replace the entry file with an included table.
+  // Recover only when the signature is unambiguous and a prior valid version
+  // contains a document preamble. This still creates a reviewable diff.
+  if (/\\documentclass\b/.test(currentContent) || !/\\begin\{longtable\}/.test(currentContent)) return null;
+  const versions = await db.fileVersion.findMany({
+    where: { projectId, path: filePath },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+  for (const version of versions) {
+    try {
+      const candidate = await getStorage().getText(version.storageKey);
+      if (/\\documentclass\b/.test(candidate) && /\\begin\{document\}/.test(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // A missing historical blob should not block other recovery candidates.
+    }
+  }
+  return null;
 }
 
 function parseTargetedPatch(content: string, fallbackFilePath: string): {

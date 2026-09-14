@@ -70,10 +70,11 @@ export function DiffView({
 }) {
   const op = proposal.operations[0];
   const [open, setOpen] = useState(!compact);
+  const largeDiff = !!op && op.expectedOldText.length + op.newText.length > 20000;
   const parts = useMemo(() => {
-    if (!op) return [];
+    if (!op || largeDiff) return [];
     return diffWords(op.expectedOldText, op.newText);
-  }, [op]);
+  }, [op, largeDiff]);
 
   if (!op) return null;
 
@@ -135,7 +136,12 @@ export function DiffView({
         </div>
       </div>
       <div className="max-h-48 overflow-y-auto px-3 py-2 font-mono text-xs leading-relaxed">
-        {parts.map((p, i) =>
+        {largeDiff ? (
+          <div className="space-y-1 text-2xs text-muted">
+            <div>这是一次完整文件恢复，已跳过逐词比较以保持界面流畅。</div>
+            <div>原文 {op.expectedOldText.length.toLocaleString()} 字符 → 新文档 {op.newText.length.toLocaleString()} 字符</div>
+          </div>
+        ) : parts.map((p, i) =>
           p.type === "eq" ? (
             <span key={i}>{p.text}</span>
           ) : p.type === "del" ? (

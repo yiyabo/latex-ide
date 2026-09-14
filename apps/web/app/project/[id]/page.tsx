@@ -320,20 +320,23 @@ export default function ProjectPage() {
 
   const onPatchApplied = useCallback(
     (filePath: string, from: number, to: number, insert: string, fullNewContent?: string) => {
+      // The accept endpoint has already persisted the patch. If the proposal
+      // targets another file, never apply the old editor buffer to the current
+      // file while openFile() is switching tabs.
       if (filePath !== activeFile) {
         openFile(filePath);
+        return;
       }
-      // Use CodeMirror precise replace to preserve undo
+      // Use CodeMirror precise replace to preserve undo. Do not save again:
+      // saving the pre-accept editor buffer can overwrite the accepted patch.
       dispatchEditorReplace(from, to, insert);
-      // Also update local state / persist
       const next =
         fullNewContent && fullNewContent !== contentRef.current
           ? fullNewContent
           : contentRef.current.slice(0, from) + insert + contentRef.current.slice(to);
       setFileContent(next);
-      void saveFile(next);
     },
-    [activeFile, openFile, saveFile],
+    [activeFile, openFile],
   );
 
   const jumpToDiagnostic = useCallback(
