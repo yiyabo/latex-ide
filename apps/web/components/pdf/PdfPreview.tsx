@@ -51,9 +51,9 @@ interface Highlight {
   text: string;
 }
 
-// One muted academic annotation color: emphasis without turning the page into confetti.
-const HIGHLIGHT_COLOR = "#E6C65C";
-const HIGHLIGHT_OPACITY = 0.24;
+// A soft lavender annotation color matching the native text-selection feel.
+const HIGHLIGHT_COLOR = "#B8A3F5";
+const HIGHLIGHT_OPACITY = 0.30;
 const PAGE_BASE_WIDTH = 680;
 const PAGE_HORIZONTAL_PADDING = 32;
 
