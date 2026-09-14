@@ -54,8 +54,8 @@ interface Highlight {
 // A soft lavender annotation color matching the native text-selection feel.
 const HIGHLIGHT_COLOR = "#B8A3F5";
 const HIGHLIGHT_OPACITY = 0.30;
-const PAGE_BASE_WIDTH = 680;
-const PAGE_HORIZONTAL_PADDING = 32;
+const PAGE_BASE_WIDTH = 680; // fit target; ResizeObserver keeps it balanced with the live panel width
+const PAGE_HORIZONTAL_PADDING = 16;
 
 type Rect = { left: number; top: number; width: number; height: number };
 
@@ -92,6 +92,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   const [numPages, setNumPages] = useState(0);
   const [pdfScale, setPdfScale] = useState(1);
   const [fitScale, setFitScale] = useState(1);
+  const [fitToWindow, setFitToWindow] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -114,8 +115,10 @@ function PdfPreviewInner({ url }: { url: string | null }) {
     const container = containerRef.current;
     if (!container) return;
     const availableWidth = Math.max(240, container.clientWidth - PAGE_HORIZONTAL_PADDING);
-    setFitScale(Math.min(1.25, Math.max(0.35, availableWidth / PAGE_BASE_WIDTH)));
-  }, []);
+    const nextFit = Math.min(1.5, Math.max(0.35, availableWidth / PAGE_BASE_WIDTH));
+    setFitScale(nextFit);
+    if (fitToWindow) setPdfScale(nextFit);
+  }, [fitToWindow]);
 
   useEffect(() => {
     recalculateFit();
@@ -326,7 +329,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
       <div className="pointer-events-none absolute right-5 top-3 z-30 flex items-center gap-1 rounded-md border border-border bg-surface/95 p-1 shadow-md">
         <button
           type="button"
-          onClick={() => setPdfScale((s) => Math.max(0.6, Number((s - 0.1).toFixed(1))))}
+          onClick={() => { setFitToWindow(false); setPdfScale((s) => Math.max(0.6, Number((s - 0.1).toFixed(1)))); }}
           className="pointer-events-auto rounded p-1 text-muted hover:bg-elevated hover:text-ink"
           aria-label="缩小 PDF"
           title="缩小 PDF"
@@ -336,7 +339,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         <span className="min-w-10 text-center text-2xs text-muted">{Math.round(pdfScale * 100)}%</span>
         <button
           type="button"
-          onClick={() => setPdfScale((s) => Math.min(2, Number((s + 0.1).toFixed(1))))}
+          onClick={() => { setFitToWindow(false); setPdfScale((s) => Math.min(2, Number((s + 0.1).toFixed(1)))); }}
           className="pointer-events-auto rounded p-1 text-muted hover:bg-elevated hover:text-ink"
           aria-label="放大 PDF"
           title="放大 PDF"
@@ -345,7 +348,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
         </button>
         <button
           type="button"
-          onClick={() => setPdfScale(fitScale)}
+          onClick={() => { setFitToWindow(true); setPdfScale(fitScale); }}
           className="pointer-events-auto rounded px-1.5 py-1 text-2xs text-muted hover:bg-elevated hover:text-ink"
           aria-label="适合当前预览窗口"
           title="适合当前预览窗口"
@@ -353,7 +356,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
           适合窗口
         </button>
       </div>
-      <div ref={containerRef} className="thin-scroll h-full w-full overflow-auto bg-elevated/50 p-4">
+      <div ref={containerRef} className="thin-scroll h-full w-full overflow-auto bg-elevated/50 p-2">
         <Document
           file={file}
           onLoadSuccess={onDocumentLoadSuccess}

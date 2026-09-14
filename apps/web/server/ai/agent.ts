@@ -135,7 +135,7 @@ export async function runChat(params: {
     const BUDGET = {
       maxRounds: repair ? 3 : 10, // targeted fixes need read → patch, not a full investigation
       maxToolCalls: repair ? 4 : 16,
-      maxWallMs: repair ? 60_000 : 180_000, // keep per-warning AI FIXING responsive
+      maxWallMs: repair ? 180_000 : 300_000, // targeted fixes 3m; full Agent runs 5m
       startedAt: Date.now(),
     };
     let toolCallsUsed = 0;
