@@ -2,8 +2,8 @@ import type { LatexDiagnostic } from "@latex-ide/contracts";
 
 /**
  * Classify LaTeX compile diagnostics into actionable categories so the
- * compile-fixing agent can route each problem to the right repair strategy
- * (and skip noise like Overfull hbox, which no patch should chase).
+ * compile-fixing agent can route each problem to the right repair strategy.
+ * Layout warnings remain informational unless the user opts into fixing them.
  */
 
 export type ErrorCategory =
@@ -18,7 +18,7 @@ export type ErrorCategory =
   | "bibtex_error" // BibTeX/Biber run failures
   | "encoding" // Unicode chars in pdflatex / inputenc issues
   | " fatal" // Emergency stop / fatal — downstream of an earlier error
-  | "warning" // Overfull/Underfull hbox — cosmetic, DO NOT auto-fix
+  | "warning" // Overfull/Underfull hbox — cosmetic; fix only when requested
   | "other";
 
 export type ClassifiedDiagnostic = LatexDiagnostic & {
@@ -120,7 +120,7 @@ const CATEGORY_RULES: Array<{
     test: (m) =>
       /^(Overfull|Underfull) \\[hv]box/i.test(m) ||
       /^LaTeX Warning:.*(hbox|vbox)/i.test(m),
-    autoFixable: false, // cosmetic — chasing these wastes rounds
+    autoFixable: true, // eligible only when the user explicitly asks to fix layout warnings
   },
 ];
 
@@ -139,10 +139,14 @@ export function classifyDiagnostics(diags: LatexDiagnostic[]): ClassifiedDiagnos
 }
 
 /**
- * Prioritized fix plan: root-cause errors first (each earlier error cascades),
- * warnings last (and only mentioned, not chased).
+ * Prioritized fix plan: root-cause errors first (each earlier error cascades).
+ * Layout warnings stay informational by default and enter the fix plan only
+ * when the caller explicitly opts in.
  */
-export function buildFixPlan(diags: LatexDiagnostic[]): {
+export function buildFixPlan(
+  diags: LatexDiagnostic[],
+  options: { includeLayoutWarnings?: boolean } = {},
+): {
   fixable: ClassifiedDiagnostic[];
   environmentOnly: ClassifiedDiagnostic[];
   noise: ClassifiedDiagnostic[];
@@ -151,15 +155,28 @@ export function buildFixPlan(diags: LatexDiagnostic[]): {
   const classified = classifyDiagnostics(diags);
   const fatalIdx = classified.filter((d) => d.category === " fatal");
   const fixable = classified
-    .filter((d) => d.autoFixable)
+    .filter(
+      (d) => d.autoFixable &&
+        (d.category !== "warning" || options.includeLayoutWarnings === true),
+    )
     // root causes first: missing files/packages before their downstream effects
     .sort((a, b) => rank(a.category) - rank(b.category));
   const environmentOnly = classified.filter(
     (d) => !d.autoFixable && d.category !== "warning" && d.category !== " fatal",
   );
-  const noise = classified.filter((d) => d.category === "warning" || d.category === " fatal");
+  const noise = classified.filter(
+    (d) => d.category === " fatal" || (d.category === "warning" && !options.includeLayoutWarnings),
+  );
 
   const plan: string[] = [];
+  if (options.includeLayoutWarnings) {
+    const layoutWarnings = classified.filter((d) => d.category === "warning");
+    if (layoutWarnings.length) {
+      plan.push(
+        `按用户要求处理 ${layoutWarnings.length} 条排版警告（Overfull/Underfull hbox/vbox）；先定位对应段落，再提交最小 diff，并重新编译验证。`,
+      );
+    }
+  }
   if (fixable.length) {
     plan.push(
       `修复 ${fixable.length} 个可自动处理的问题（按优先级）：`,
@@ -176,7 +193,7 @@ export function buildFixPlan(diags: LatexDiagnostic[]): {
   }
   if (noise.length) {
     const warns = noise.filter((d) => d.category === "warning").length;
-    if (warns) plan.push(`另有 ${warns} 条排版警告（Overfull/Underfull hbox），不影响编译，跳过。`);
+    if (warns) plan.push(`另有 ${warns} 条排版警告（Overfull/Underfull hbox），不影响编译，暂不处理。`);
     if (fatalIdx.length)
       plan.push(`注意：检测到 Fatal/Emergency stop —— 这是上述根因错误的连锁反应，修复根因后重编译。`);
   }

@@ -47,8 +47,11 @@ const TOOLS = [
     type: "function",
     function: {
       name: "get_compile_errors",
-      description: "Get diagnostics from the most recent compile",
-      parameters: { type: "object", properties: {} },
+      description: "Get diagnostics from the most recent compile. Set request to the user's explicit request when deciding whether to include layout warnings.",
+      parameters: {
+        type: "object",
+        properties: { request: { type: "string", description: "The user's request, especially if they ask to fix warnings or layout." } },
+      },
     },
   },
   {

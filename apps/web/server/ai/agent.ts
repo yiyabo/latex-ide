@@ -56,6 +56,12 @@ const QUICK_PROMPTS: Record<string, string> = {
   translate_academic: "Rewrite the selected text in polished academic English if it is not already, or improve register if it is.",
 };
 
+const LAYOUT_WARNING_REQUEST = /(?:修复|解决|处理|消除|fix|resolve|remove|address|layout|排版).*(?:warning|警告|hbox|vbox|overfull|underfull)|(?:warning|警告|hbox|vbox|overfull|underfull).*(?:修复|解决|处理|消除|fix|resolve|remove|address|layout|排版)/i;
+
+function requestsLayoutWarningFix(message: string, action?: string): boolean {
+  return action === "fix_latex" || LAYOUT_WARNING_REQUEST.test(message);
+}
+
 export async function runChat(params: {
   projectId: string;
   userId: string;
@@ -251,7 +257,10 @@ export async function runChat(params: {
         }
         toolCallsUsed++;
         onEvent({ type: "status", message: `执行 ${toolLabel(tc.name)}…` });
-        const result = await executeReadOnlyTool(projectId, tc.name, tc.args);
+        const result = await executeReadOnlyTool(projectId, tc.name, tc.args, {
+          userRequest: message,
+          action,
+        });
         onEvent({ type: "tool_call", name: `${tc.name}:result`, args: { preview: result.slice(0, 200) } });
         working.push({
           role: "user",
@@ -332,6 +341,7 @@ async function executeReadOnlyTool(
   projectId: string,
   name: string,
   args: Record<string, unknown>,
+  context: { userRequest: string; action?: string } = { userRequest: "" },
 ): Promise<string> {
   try {
     if (name === "read_file_range") {
@@ -361,7 +371,9 @@ async function executeReadOnlyTool(
       if (!result) return "No compile result.";
       // Attach a classified fix plan so the agent can route each error
       // instead of re-diagnosing from raw strings every round.
-      const plan = buildFixPlan(result.diagnostics);
+      const plan = buildFixPlan(result.diagnostics, {
+        includeLayoutWarnings: requestsLayoutWarningFix(context.userRequest, context.action),
+      });
       return JSON.stringify(
         {
           status: result.status,

@@ -45,8 +45,11 @@ const TOOLS = [
   },
   {
     name: "get_compile_errors",
-    description: "Get diagnostics from the most recent compile",
-    input_schema: { type: "object", properties: {} },
+    description: "Get diagnostics from the most recent compile. Set request to the user's explicit request when deciding whether to include layout warnings.",
+    input_schema: {
+      type: "object",
+      properties: { request: { type: "string", description: "The user's request, especially if they ask to fix warnings or layout." } },
+    },
   },
   {
     name: "list_project_files",

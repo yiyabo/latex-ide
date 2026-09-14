@@ -55,10 +55,21 @@ describe("classifyDiagnostic", () => {
     expect(c.autoFixable).toBe(false);
   });
 
-  it("overfull hbox = warning noise, never chased", () => {
+  it("overfull hbox is eligible only when explicitly requested", () => {
     const c = classifyDiagnostic(d("Overfull \\hbox (21.99072pt too wide)", "warning"));
     expect(c.category).toBe("warning");
-    expect(c.autoFixable).toBe(false);
+    expect(c.autoFixable).toBe(true);
+    expect(buildFixPlan([c]).fixable).toEqual([]);
+    expect(buildFixPlan([c], { includeLayoutWarnings: true }).fixable).toHaveLength(1);
+  });
+
+  it("layout warning plan includes a requested repair instruction", () => {
+    const plan = buildFixPlan(
+      [d("Underfull \\hbox (badness 10000)", "warning")],
+      { includeLayoutWarnings: true },
+    );
+    expect(plan.plan.join("\\n")).toContain("按用户要求处理");
+    expect(plan.noise).toEqual([]);
   });
 });
 

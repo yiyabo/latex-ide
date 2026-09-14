@@ -137,14 +137,14 @@ export function parseLatexLog(
     // Overfull / Underfull
     const box = line.match(/^(Overfull|Underfull)\s+\\(\w+)\s*\(([^)]*)\)/);
     if (box) {
-      // next line may contain "at lines X--Y"
-      const next = lines[i + 1] ?? "";
-      const atLines = next.match(/at lines? (\d+)(?:--(\d+))?/);
+      // TeX may put the source range on this line or the following line.
+      const atLines = line.match(/at lines? (\d+)(?:--(\d+))?/i) ||
+        (lines[i + 1] ?? "").match(/at lines? (\d+)(?:--(\d+))?/i);
       push({
         filePath: currentFile,
         line: atLines ? Number(atLines[1]) : undefined,
         severity: "warning",
-        message: `${box[1]} \\${box[2]} (${box[3]})`,
+        message: `${box[1]} \\${box[2]} (${box[3]})${atLines ? ` at line ${atLines[1]}` : ""}`,
         raw: line,
       });
     }

@@ -77,6 +77,36 @@ LaTeX Warning: Citation 'smith2020' on page 1 undefined on input line 30.
     expect(undef?.line).toBe(12);
   });
 
+  it("captures the source line when an hbox warning includes it inline", () => {
+    const diags = parseLatexLog(
+      "Overfull \\hbox (0.24779pt too wide) in paragraph at lines 144--146",
+      "main.tex",
+    );
+    expect(diags).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        filePath: "main.tex",
+        line: 144,
+        message: expect.stringContaining("Overfull"),
+      }),
+    ]);
+  });
+
+  it("keeps a following-line hbox source range", () => {
+    const diags = parseLatexLog(
+      "Underfull \\hbox (badness 10000)\nin paragraph at lines 20--22",
+      "tables/table1_candidates.tex",
+    );
+    expect(diags[0]).toEqual(
+      expect.objectContaining({
+        severity: "warning",
+        filePath: "tables/table1_candidates.tex",
+        line: 20,
+      }),
+    );
+
+  });
+
   it("detects failure from exit code and log", () => {
     expect(compileFailedFromLog("ok", 1)).toBe(true);
     expect(compileFailedFromLog("! Emergency stop.", 0)).toBe(true);
