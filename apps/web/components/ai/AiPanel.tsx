@@ -71,10 +71,12 @@ export function AiPanel({
   projectId,
   onPatchApplied,
   onCollapse,
+  aiFixRequest,
 }: {
   projectId: string;
   onPatchApplied?: (filePath: string, from: number, to: number, insert: string, newText: string) => void;
   onCollapse?: () => void;
+  aiFixRequest?: { id: string; message: string };
 }) {
   const {
     selection,
@@ -94,6 +96,8 @@ export function AiPanel({
 
   const [input, setInput] = useState("");
   const composingInput = useRef(false);
+  const streamingRef = useRef(false);
+  const queuedRequests = useRef<string[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamBuf, setStreamBuf] = useState("");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -104,6 +108,7 @@ export function AiPanel({
   const listRef = useRef<HTMLDivElement>(null);
   const conversationsRef = useRef<LoadedConversation[]>([]);
   const listWrapRef = useRef<HTMLDivElement>(null);
+  const lastAiFixId = useRef<string | null>(null);
 
   const applyConversation = useCallback(
     (conv: LoadedConversation) => {
@@ -231,6 +236,12 @@ export function AiPanel({
   const send = useCallback(
     async (message: string, action?: string) => {
       if (!message.trim() && !action) return;
+      if (streamingRef.current) {
+        queuedRequests.current.push(message);
+        showToast("AI 正在处理中，修复请求已排队");
+        return;
+      }
+      streamingRef.current = true;
       appendChat({
         id: `u-${Date.now()}`,
         role: "user",
@@ -399,6 +410,7 @@ export function AiPanel({
           content: e instanceof Error ? e.message : "Network error",
         });
       } finally {
+        streamingRef.current = false;
         setStreaming(false);
         setStreamBuf("");
         // Mark any still-running entries as finished (e.g. stream ended early)
@@ -411,6 +423,10 @@ export function AiPanel({
         );
         // Keep steps visible briefly so user can expand, then auto-collapse
         setTimeout(() => setThinkingOpen(false), 1200);
+        const next = queuedRequests.current.shift();
+        if (next) {
+          setTimeout(() => void send(next), 0);
+        }
       }
     },
     [
@@ -421,8 +437,15 @@ export function AiPanel({
       addPatch,
       setConversationId,
       setConversations,
+      showToast,
     ],
   );
+
+  useEffect(() => {
+    if (!aiFixRequest || lastAiFixId.current === aiFixRequest.id) return;
+    lastAiFixId.current = aiFixRequest.id;
+    void send(aiFixRequest.message);
+  }, [aiFixRequest, send]);
 
   const acceptPatch = useCallback(
     async (patch: PatchProposal) => {

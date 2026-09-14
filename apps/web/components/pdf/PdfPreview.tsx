@@ -497,9 +497,11 @@ export const PdfPreview = memo(PdfPreviewInner);
 export function CompileStatusBar({
   status,
   onJump,
+  onAiFix,
 }: {
   status: { status: string; diagnostics: Array<{ severity: string; filePath?: string; line?: number; message: string }>; durationMs?: number } | null;
   onJump?: (filePath: string, line?: number) => void;
+  onAiFix?: (diagnostic: { severity: string; filePath?: string; line?: number; message: string }) => void;
 }) {
   if (!status) return null;
   const errors = status.diagnostics.filter((d) => d.severity === "error");
@@ -534,23 +536,38 @@ export function CompileStatusBar({
         <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto">
           {status.diagnostics.slice(0, 20).map((d, i) => (
             <li key={i}>
-              <button
-                onClick={() => d.filePath && onJump?.(d.filePath, d.line)}
-                className="w-full text-left text-2xs hover:underline"
-              >
-                <span
-                  className={
-                    d.severity === "error" ? "text-danger" : d.severity === "warning" ? "text-warn" : "text-muted"
-                  }
+              <div className="flex items-start gap-2">
+                <button
+                  onClick={() => d.filePath && onJump?.(d.filePath, d.line)}
+                  className="min-w-0 flex-1 text-left text-2xs hover:underline"
                 >
-                  {d.severity}
-                </span>{" "}
-                <span className="text-muted">
-                  {d.filePath}
-                  {d.line ? `:${d.line}` : ""}
-                </span>{" "}
-                <span className="text-ink">{d.message}</span>
-              </button>
+                  <span
+                    className={
+                      d.severity === "error" ? "text-danger" : d.severity === "warning" ? "text-warn" : "text-muted"
+                    }
+                  >
+                    {d.severity}
+                  </span>{" "}
+                  <span className="text-muted">
+                    {d.filePath}
+                    {d.line ? `:${d.line}` : ""}
+                  </span>{" "}
+                  <span className="text-ink">{d.message}</span>
+                </button>
+                {(d.severity === "error" || d.severity === "warning") && onAiFix && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAiFix(d);
+                    }}
+                    className="shrink-0 rounded border border-accent/35 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-accent transition hover:bg-accent-soft"
+                    title="让 AI 分析并提出修复方案"
+                  >
+                    AI FIXING
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

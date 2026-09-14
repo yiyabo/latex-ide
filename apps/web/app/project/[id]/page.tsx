@@ -68,6 +68,7 @@ export default function ProjectPage() {
   const [loadingFile, setLoadingFile] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [fileSearch, setFileSearch] = useState("");
+  const [aiFixRequest, setAiFixRequest] = useState<{ id: string; message: string } | undefined>();
   const [projectName, setProjectName] = useState("");
   const [desktopMode, setDesktopMode] = useState(false);
   const contentRef = useRef(fileContent);
@@ -242,13 +243,20 @@ export default function ProjectPage() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "a") {
+        const target = e.target as HTMLElement | null;
+        const editorOrInput =
+          target?.closest(".cm-editor, textarea, input, [contenteditable='true']") ||
+          document.activeElement?.closest?.(".cm-editor, textarea, input, [contenteditable='true']");
+        if (!editorOrInput) e.preventDefault();
+      }
       if (mod && e.key === "Enter") {
         e.preventDefault();
         void compile();
       }
       if (mod && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        const el = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Ask the assistant…"]');
+        const el = document.querySelector<HTMLTextAreaElement>("#ai-assistant-input");
         el?.focus();
       }
       if (e.key === "Escape") {
@@ -258,6 +266,20 @@ export default function ProjectPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [compile]);
+
+  const requestAiFix = useCallback(
+    (diagnostic: { severity: string; filePath?: string; line?: number; message: string }) => {
+      const location = diagnostic.filePath
+        ? `${diagnostic.filePath}${diagnostic.line ? `:${diagnostic.line}` : ""}`
+        : "当前编译结果";
+      setRightCollapsed(false);
+      setAiFixRequest({
+        id: `${Date.now()}-${Math.random()}`,
+        message: `请修复这条 LaTeX ${diagnostic.severity}：${location} — ${diagnostic.message}。请先分析原因，提交可审阅的最小 diff，接受后重新编译验证。`,
+      });
+    },
+    [setRightCollapsed],
+  );
 
   const onPatchApplied = useCallback(
     (filePath: string, from: number, to: number, insert: string, fullNewContent?: string) => {
@@ -488,7 +510,11 @@ export default function ProjectPage() {
               </PanelGroup>
             </div>
 
-            <CompileStatusBar status={compileStatus} onJump={jumpToDiagnostic} />
+            <CompileStatusBar
+              status={compileStatus}
+              onJump={jumpToDiagnostic}
+              onAiFix={requestAiFix}
+            />
           </div>
         </Panel>
 
@@ -501,6 +527,7 @@ export default function ProjectPage() {
               <div className="h-full">
                 <AiPanel
                   projectId={projectId}
+                  aiFixRequest={aiFixRequest}
                   onPatchApplied={onPatchApplied}
                   onCollapse={() => setRightCollapsed(true)}
                 />
