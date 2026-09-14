@@ -10,6 +10,7 @@ const TOOLS = [
         type: "object",
         properties: {
           summary: { type: "string" },
+          filePath: { type: "string", description: "Exact project-relative file path to edit" },
           operations: {
             type: "array",
             items: {
@@ -23,7 +24,7 @@ const TOOLS = [
             },
           },
         },
-        required: ["summary", "operations"],
+        required: ["summary", "filePath", "operations"],
       },
     },
   },
@@ -166,11 +167,14 @@ export class OpenAIProvider implements AIProvider {
   async chat(opts: {
     messages: ChatMessage[];
     onStream?: (token: string) => void;
+    toolChoice?: string;
+    availableTools?: string[];
   }): Promise<ProviderResponse> {
+    const tools = opts.availableTools ? TOOLS.filter((t) => opts.availableTools!.includes(t.function.name)) : TOOLS;
     if (opts.onStream) {
       let content = "";
       const toolCalls: ProviderResponse["toolCalls"] = [];
-      for await (const ev of this.streamChat({ messages: opts.messages })) {
+      for await (const ev of this.streamChat({ messages: opts.messages, toolChoice: opts.toolChoice, availableTools: opts.availableTools })) {
         if (ev.type === "token") {
           content += ev.content;
           opts.onStream(ev.content);
@@ -190,7 +194,8 @@ export class OpenAIProvider implements AIProvider {
       body: JSON.stringify({
         model: this.model,
         messages: opts.messages,
-        tools: TOOLS,
+        tools,
+        ...(opts.toolChoice ? { tool_choice: { type: "function", function: { name: opts.toolChoice } } } : {}),
         temperature: 0.3,
       }),
     });
@@ -218,7 +223,8 @@ export class OpenAIProvider implements AIProvider {
     return { content: msg?.content || "", toolCalls };
   }
 
-  async *streamChat(opts: { messages: ChatMessage[] }): AsyncGenerator<ProviderStreamEvent> {
+  async *streamChat(opts: { messages: ChatMessage[]; toolChoice?: string; availableTools?: string[] }): AsyncGenerator<ProviderStreamEvent> {
+    const tools = opts.availableTools ? TOOLS.filter((t) => opts.availableTools!.includes(t.function.name)) : TOOLS;
     const res = await fetch(`${this.baseUrl}/chat/completions`, {
       method: "POST",
       headers: {
@@ -228,7 +234,8 @@ export class OpenAIProvider implements AIProvider {
       body: JSON.stringify({
         model: this.model,
         messages: opts.messages,
-        tools: TOOLS,
+        tools,
+        ...(opts.toolChoice ? { tool_choice: { type: "function", function: { name: opts.toolChoice } } } : {}),
         temperature: 0.3,
         stream: true,
       }),

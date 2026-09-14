@@ -69,12 +69,18 @@ export async function runChat(params: {
   selection: EditorSelectionContext | null;
   action?: string;
   conversationId?: string;
+  repair?: {
+    severity: "error" | "warning";
+    filePath?: string;
+    line?: number;
+    message: string;
+  };
   onEvent: (event: {
     type: "token" | "tool_call" | "patch_proposal" | "done" | "error" | "status" | "conversation";
     [k: string]: unknown;
   }) => void;
 }) {
-  const { projectId, userId, message, selection, action, onEvent } = params;
+  const { projectId, userId, message, selection, action, repair, onEvent } = params;
 
   // Resolve or create conversation
   let conversationId = params.conversationId;
@@ -104,8 +110,15 @@ export async function runChat(params: {
   });
 
   const messages = [
-    { role: "system" as const, content: SYSTEM_PROMPT },
-    ...history.map((m) => ({
+    {
+      role: "system" as const,
+      content: repair
+        ? `${SYSTEM_PROMPT}\n\nTARGETED AI FIXING MODE:\nWork only on the supplied diagnostic. Do NOT call get_project_index, list_project_files, get_project_structure, check_figure_paths, search_literature, or request_compile. First call read_file_range on the supplied file around the supplied line (about 20 lines), then call propose_patch with the exact filePath. After propose_patch, stop — the user will accept the diff first. If the supplied file path is wrong, use the exact patch anchor to locate the correct included file; do not scan the whole project.\n\nDiagnostic: ${JSON.stringify(repair)}`
+        : SYSTEM_PROMPT,
+    },
+    // Targeted fixes do not need the previous long conversation transcript;
+    // sending it makes the model repeat old investigations and hit the wall.
+    ...(repair ? history.slice(-2) : history).map((m) => ({
       role: m.role as "user" | "assistant" | "tool",
       content: m.content,
     })),
@@ -120,13 +133,58 @@ export async function runChat(params: {
 
     // ---- Agent run budget: prevents runaway loops from burning tokens/time.
     const BUDGET = {
-      maxRounds: 10, // LLM round-trips
-      maxToolCalls: 16, // total tool executions
-      maxWallMs: 180_000, // 3 minutes hard wall
+      maxRounds: repair ? 3 : 10, // targeted fixes need read → patch, not a full investigation
+      maxToolCalls: repair ? 4 : 16,
+      maxWallMs: repair ? 60_000 : 180_000, // keep per-warning AI FIXING responsive
       startedAt: Date.now(),
     };
     let toolCallsUsed = 0;
     let patchFailed = false; // persists across rounds until a patch succeeds
+
+    if (repair) {
+      const filePath = repair.filePath?.trim();
+      if (!filePath) throw new Error("该诊断没有提供目标文件路径，无法安全生成补丁");
+      const { content } = await readFileContent(projectId, filePath);
+      const lines = content.split("\n");
+      const line = Math.max(1, repair.line ?? 1);
+      const startLine = Math.max(1, line - 15);
+      const endLine = Math.min(lines.length, line + 15);
+      const snippet = lines
+        .slice(startLine - 1, endLine)
+        .map((text, index) => `${startLine + index}: ${text}`)
+        .join("\n");
+      const repairPrompt = [
+        "你是 LaTeX 定向修复器。只处理下面这一条诊断，不要调用工具，不要输出解释。",
+        "请返回一个 JSON 对象，格式必须是：{\"summary\":\"...\",\"filePath\":\"...\",\"operations\":[{\"type\":\"replace\",\"expectedOldText\":\"原文\",\"newText\":\"修改后\"}]}。",
+        "expectedOldText 必须逐字匹配代码片段；如果无法提出安全的局部修改，返回 {\"summary\":\"无法安全自动修复\",\"filePath\":\"...\",\"operations\":[] }。",
+        `诊断：${JSON.stringify(repair)}`,
+        `目标文件：${filePath}`,
+        `代码片段（${startLine}-${endLine} 行）：\n${snippet}`,
+      ].join("\n\n");
+      onEvent({ type: "status", message: "正在针对诊断生成最小修改建议…" });
+      const res = await provider.chat({
+        messages: [
+          { role: "system", content: "输出严格 JSON，不要 Markdown 代码围栏，不要调用工具。" },
+          { role: "user", content: repairPrompt },
+        ],
+        availableTools: [],
+        onStream: (token) => onEvent({ type: "token", content: token }),
+      });
+      const patchArgs = parseTargetedPatch(res.content, filePath);
+      if (patchArgs.operations.length > 0) {
+        patchProposal = await createPatchFromToolArgs({
+          projectId,
+          conversationId,
+          selection: await selectionFromFileArgs(patchArgs, projectId),
+          args: patchArgs,
+        });
+        onEvent({ type: "patch_proposal", proposal: patchProposal });
+        assistantText = "已针对这条诊断生成最小修改建议，请审阅并接受。";
+      } else {
+        assistantText = patchArgs.summary || "AI 无法为这条诊断生成安全的局部修改。";
+      }
+    }
+
     const budgetExceeded = (): string | null => {
       const elapsed = Date.now() - BUDGET.startedAt;
       if (elapsed > BUDGET.maxWallMs)
@@ -136,8 +194,9 @@ export async function runChat(params: {
       return null;
     };
 
-    for (let round = 0; round <= BUDGET.maxRounds; round++) {
-      const overrun = round > 0 ? budgetExceeded() : null;
+    if (!repair) {
+      for (let round = 0; round <= BUDGET.maxRounds; round++) {
+        const overrun = round > 0 ? budgetExceeded() : null;
       if (overrun) {
         onEvent({ type: "status", message: overrun });
         assistantText += `\n\n---\n⚠️ ${overrun}。以上是当前已完成的分析与结论；如需继续，请回复"继续"。`;
@@ -150,6 +209,11 @@ export async function runChat(params: {
       });
       const res = await provider.chat({
         messages: working,
+        // Targeted AI FIXING is deterministic: read once, then require the
+        // patch tool. This prevents compatible models from repeatedly reading
+        // the same range until the 180-second general budget expires.
+        toolChoice: repair ? (round === 0 ? "read_file_range" : "propose_patch") : undefined,
+        availableTools: repair ? [round === 0 ? "read_file_range" : "propose_patch"] : undefined,
         onStream: (t) => {
           roundText += t;
           assistantText += t;
@@ -165,6 +229,16 @@ export async function runChat(params: {
       const toolCalls = res.toolCalls || [];
       const usedToolNames = new Set(toolCalls.map((tc) => tc.name));
       if (toolCalls.length === 0) {
+        // Some compatible models stop after a read-only tool without emitting
+        // a second tool call. A targeted fix must not end in that state: give
+        // it one explicit tool-only nudge and keep the short repair budget.
+        if (repair && !patchProposal && round < BUDGET.maxRounds) {
+          working.push({
+            role: "user",
+            content: "SYSTEM: targeted repair is not complete. Do not reply with prose. Call propose_patch NOW. It must include filePath exactly as supplied in the diagnostic and one or more replace operations with exact expectedOldText from the file you just read. Then stop.",
+          });
+          continue;
+        }
         // A failed propose_patch means the model owes the user either a retry
         // or an explicit explanation. An empty response here is a model hiccup
         // (e.g. GLM returning nothing after a tool-heavy round) — nudge once.
@@ -269,6 +343,7 @@ ${result}
 
 Continue. If you are ready to edit text, call propose_patch with expectedOldText and newText.`,
         });
+      }
       }
     }
 
@@ -812,6 +887,34 @@ export async function acceptPatch(patchId: string, userId: string) {
   });
 
   return { versionId, content: text, latestVersionId: fileData.latest.id };
+}
+
+function parseTargetedPatch(content: string, fallbackFilePath: string): {
+  summary: string;
+  filePath: string;
+  operations: Array<{ type: "replace"; expectedOldText: string; newText: string }>;
+} {
+  const raw = content.replace(/```(?:json)?/gi, "").trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) {
+    return { summary: "AI 未返回可解析的修改建议", filePath: fallbackFilePath, operations: [] };
+  }
+  try {
+    const value = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+    const operations = Array.isArray(value.operations)
+      ? value.operations.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const op = item as Record<string, unknown>;
+          const expectedOldText = String(op.expectedOldText ?? "");
+          if (op.type !== "replace" || !expectedOldText) return [];
+          return [{ type: "replace" as const, expectedOldText, newText: String(op.newText ?? "") }];
+        })
+      : [];
+    return { summary: String(value.summary ?? "已生成修改建议"), filePath: String(value.filePath || fallbackFilePath), operations };
+  } catch {
+    return { summary: "AI 返回内容无法解析为安全补丁", filePath: fallbackFilePath, operations: [] };
+  }
 }
 
 export async function rejectPatch(patchId: string, userId: string) {

@@ -23,6 +23,12 @@ export interface AIProvider {
   chat(opts: {
     messages: ChatMessage[];
     onStream?: (token: string) => void;
+    toolChoice?: string;
+    availableTools?: string[];
   }): Promise<ProviderResponse>;
-  streamChat(opts: { messages: ChatMessage[] }): AsyncGenerator<ProviderStreamEvent>;
+  streamChat(opts: {
+    messages: ChatMessage[];
+    toolChoice?: string;
+    availableTools?: string[];
+  }): AsyncGenerator<ProviderStreamEvent>;
 }

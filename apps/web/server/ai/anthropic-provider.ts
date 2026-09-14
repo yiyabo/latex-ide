@@ -14,6 +14,7 @@ const TOOLS = [
       type: "object",
       properties: {
         summary: { type: "string" },
+        filePath: { type: "string", description: "Exact project-relative file path to edit" },
         operations: {
           type: "array",
           items: {
@@ -27,7 +28,7 @@ const TOOLS = [
           },
         },
       },
-      required: ["summary", "operations"],
+      required: ["summary", "filePath", "operations"],
     },
   },
   {
@@ -169,11 +170,12 @@ export class AnthropicProvider implements AIProvider {
   async chat(opts: {
     messages: ChatMessage[];
     onStream?: (token: string) => void;
+    toolChoice?: string;
   }): Promise<ProviderResponse> {
     if (opts.onStream) {
       let content = "";
       const toolCalls: ProviderResponse["toolCalls"] = [];
-      for await (const ev of this.streamChat({ messages: opts.messages })) {
+      for await (const ev of this.streamChat({ messages: opts.messages, toolChoice: opts.toolChoice })) {
         if (ev.type === "token") {
           content += ev.content;
           opts.onStream(ev.content);
@@ -198,6 +200,7 @@ export class AnthropicProvider implements AIProvider {
         system,
         messages: rest,
         tools: TOOLS,
+        ...(opts.toolChoice ? { tool_choice: { type: "tool", name: opts.toolChoice } } : {}),
       }),
     });
     if (!res.ok) {
@@ -227,6 +230,7 @@ export class AnthropicProvider implements AIProvider {
 
   async *streamChat(opts: {
     messages: ChatMessage[];
+    toolChoice?: string;
   }): AsyncGenerator<ProviderStreamEvent> {
     const { system, rest } = this.splitMessages(opts.messages);
     const res = await fetch(`${this.base()}/v1/messages`, {
@@ -239,6 +243,7 @@ export class AnthropicProvider implements AIProvider {
         system,
         messages: rest,
         tools: TOOLS,
+        ...(opts.toolChoice ? { tool_choice: { type: "tool", name: opts.toolChoice } } : {}),
       }),
     });
 

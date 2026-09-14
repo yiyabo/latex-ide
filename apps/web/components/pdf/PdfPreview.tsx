@@ -499,9 +499,9 @@ export function CompileStatusBar({
   onJump,
   onAiFix,
 }: {
-  status: { status: string; diagnostics: Array<{ severity: string; filePath?: string; line?: number; message: string }>; durationMs?: number } | null;
+  status: { status: string; diagnostics: Array<{ severity: "error" | "warning" | "info"; filePath?: string; line?: number; message: string }>; durationMs?: number } | null;
   onJump?: (filePath: string, line?: number) => void;
-  onAiFix?: (diagnostic: { severity: string; filePath?: string; line?: number; message: string }) => void;
+  onAiFix?: (diagnostic: { severity: "error" | "warning"; filePath?: string; line?: number; message: string }) => void;
 }) {
   if (!status) return null;
   const errors = status.diagnostics.filter((d) => d.severity === "error");
@@ -559,7 +559,9 @@ export function CompileStatusBar({
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onAiFix(d);
+                      if (d.severity === "error" || d.severity === "warning") {
+                        onAiFix({ ...d, severity: d.severity });
+                      }
                     }}
                     className="shrink-0 rounded border border-accent/35 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-accent transition hover:bg-accent-soft"
                     title="让 AI 分析并提出修复方案"

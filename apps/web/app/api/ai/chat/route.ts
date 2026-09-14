@@ -9,6 +9,14 @@ const Body = z.object({
   message: z.string().min(1),
   selection: EditorSelectionContextSchema.nullish(),
   action: z.string().nullish(),
+  repair: z
+    .object({
+      severity: z.enum(["error", "warning"]),
+      filePath: z.string().optional(),
+      line: z.number().int().positive().optional(),
+      message: z.string(),
+    })
+    .nullish(),
 });
 
 export const dynamic = "force-dynamic";
@@ -48,6 +56,7 @@ export async function POST(req: Request) {
           selection: body.selection ?? null,
           action: body.action ?? undefined,
           conversationId: body.conversationId ?? undefined,
+          repair: body.repair ?? undefined,
           onEvent: send,
         });
       } catch (err) {

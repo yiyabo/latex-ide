@@ -46,6 +46,19 @@ type LoadedConversation = {
 };
 
 /** One line in the agent activity card (tool call / status / result). */
+type RepairRequest = {
+  severity: "error" | "warning";
+  filePath?: string;
+  line?: number;
+  message: string;
+};
+
+type SendRequest = {
+  message: string;
+  action?: string;
+  repair?: RepairRequest;
+};
+
 type ActivityItem = {
   id: string;
   kind: "tool" | "info" | "text";
@@ -76,7 +89,7 @@ export function AiPanel({
   projectId: string;
   onPatchApplied?: (filePath: string, from: number, to: number, insert: string, newText: string) => void;
   onCollapse?: () => void;
-  aiFixRequest?: { id: string; message: string };
+  aiFixRequest?: { id: string; message: string; repair: RepairRequest };
 }) {
   const {
     selection,
@@ -97,7 +110,7 @@ export function AiPanel({
   const [input, setInput] = useState("");
   const composingInput = useRef(false);
   const streamingRef = useRef(false);
-  const queuedRequests = useRef<string[]>([]);
+  const queuedRequests = useRef<SendRequest[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [streamBuf, setStreamBuf] = useState("");
   const [activity, setActivity] = useState<ActivityItem[]>([]);
@@ -234,10 +247,10 @@ export function AiPanel({
   );
 
   const send = useCallback(
-    async (message: string, action?: string) => {
+    async (message: string, action?: string, repair?: RepairRequest) => {
       if (!message.trim() && !action) return;
       if (streamingRef.current) {
-        queuedRequests.current.push(message);
+        queuedRequests.current.push({ message, action, repair });
         showToast("AI 正在处理中，修复请求已排队");
         return;
       }
@@ -289,6 +302,7 @@ export function AiPanel({
             ...(action ? { action } : {}),
             ...(conversationId ? { conversationId } : {}),
             ...(selection ? { selection } : {}),
+            ...(repair ? { repair } : {}),
           }),
         });
         if (!res.ok || !res.body) {
@@ -425,7 +439,7 @@ export function AiPanel({
         setTimeout(() => setThinkingOpen(false), 1200);
         const next = queuedRequests.current.shift();
         if (next) {
-          setTimeout(() => void send(next), 0);
+          setTimeout(() => void send(next.message, next.action, next.repair), 0);
         }
       }
     },
@@ -444,7 +458,7 @@ export function AiPanel({
   useEffect(() => {
     if (!aiFixRequest || lastAiFixId.current === aiFixRequest.id) return;
     lastAiFixId.current = aiFixRequest.id;
-    void send(aiFixRequest.message);
+    void send(aiFixRequest.message, undefined, aiFixRequest.repair);
   }, [aiFixRequest, send]);
 
   const acceptPatch = useCallback(

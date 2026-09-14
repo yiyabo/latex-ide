@@ -34,6 +34,12 @@ import { AiPanel } from "@/components/ai/AiPanel";
 import { Toast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
 
+type AiFixRequest = {
+  id: string;
+  message: string;
+  repair: { severity: "error" | "warning"; filePath?: string; line?: number; message: string };
+};
+
 export default function ProjectPage() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
@@ -70,7 +76,7 @@ export default function ProjectPage() {
   const [loadingFile, setLoadingFile] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [fileSearch, setFileSearch] = useState("");
-  const [aiFixRequest, setAiFixRequest] = useState<{ id: string; message: string } | undefined>();
+  const [aiFixRequest, setAiFixRequest] = useState<AiFixRequest>();
   const [projectName, setProjectName] = useState("");
   const [editingProjectName, setEditingProjectName] = useState(false);
   const [projectNameDraft, setProjectNameDraft] = useState("");
@@ -298,7 +304,7 @@ export default function ProjectPage() {
   }, [compile]);
 
   const requestAiFix = useCallback(
-    (diagnostic: { severity: string; filePath?: string; line?: number; message: string }) => {
+    (diagnostic: { severity: "error" | "warning"; filePath?: string; line?: number; message: string }) => {
       const location = diagnostic.filePath
         ? `${diagnostic.filePath}${diagnostic.line ? `:${diagnostic.line}` : ""}`
         : "当前编译结果";
@@ -306,6 +312,7 @@ export default function ProjectPage() {
       setAiFixRequest({
         id: `${Date.now()}-${Math.random()}`,
         message: `请修复这条 LaTeX ${diagnostic.severity}：${location} — ${diagnostic.message}。请先分析原因，提交可审阅的最小 diff，接受后重新编译验证。`,
+        repair: diagnostic,
       });
     },
     [setRightCollapsed],
