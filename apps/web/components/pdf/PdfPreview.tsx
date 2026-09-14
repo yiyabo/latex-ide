@@ -50,7 +50,36 @@ interface Highlight {
   text: string;
 }
 
-const HIGHLIGHT_COLORS = ["#fde68a", "#a7f3d0", "#bfdbfe", "#fca5a5"];
+// One muted academic annotation color: emphasis without turning the page into confetti.
+const HIGHLIGHT_COLOR = "#E6C65C";
+const HIGHLIGHT_OPACITY = 0.24;
+
+type Rect = { left: number; top: number; width: number; height: number };
+
+/** Merge touching rects on one rendered line to prevent opacity stacking. */
+function mergeLineRects(rects: Rect[]): Rect[] {
+  const rows: Rect[][] = [];
+  for (const rect of [...rects].sort((a, b) => a.top - b.top || a.left - b.left)) {
+    const row = rows.find((r) => Math.abs((r[0]?.top ?? 0) - rect.top) < Math.max(3, rect.height * 0.35));
+    if (row) row.push(rect);
+    else rows.push([rect]);
+  }
+  return rows.map((row) => {
+    const sorted = row.sort((a, b) => a.left - b.left);
+    const first = sorted[0];
+    if (!first) return null;
+    const top = Math.min(...sorted.map((rect) => rect.top));
+    const right = Math.max(...sorted.map((rect) => rect.left + rect.width));
+    const bottom = Math.max(...sorted.map((rect) => rect.top + rect.height));
+    // One continuous strip per text line: no per-word gaps or alpha seams.
+    return {
+      left: first.left,
+      top,
+      width: right - first.left,
+      height: bottom - top,
+    };
+  }).filter((rect): rect is Rect => rect !== null);
+}
 
 /* ------------------------------------------------------------------ */
 /* PdfPreview                                                          */
@@ -199,19 +228,18 @@ function PdfPreviewInner({ url }: { url: string | null }) {
   const addHighlight = useCallback(() => {
     if (!selection || selection.rects.length === 0) return;
 
-    const color = HIGHLIGHT_COLORS[highlights.length % HIGHLIGHT_COLORS.length] ?? "#fde68a";
     setHighlights((prev) => [
       ...prev,
       {
         page: selection.page,
-        rects: selection.rects,
-        color,
+        rects: mergeLineRects(selection.rects),
+        color: HIGHLIGHT_COLOR,
         text: selection.text.slice(0, 200),
       },
     ]);
     setHighlightVersion((v) => v + 1);
     dismissPopup();
-  }, [selection, dismissPopup, highlights.length]);
+  }, [selection, dismissPopup]);
 
   const removeLastHighlight = useCallback(() => {
     setHighlights((prev) => {
@@ -359,7 +387,7 @@ function PdfPreviewInner({ url }: { url: string | null }) {
                           width: r.width,
                           height: r.height,
                           backgroundColor: h.color,
-                          opacity: 0.45,
+                          opacity: HIGHLIGHT_OPACITY,
                         }}
                       />
                     ))}
