@@ -31,7 +31,6 @@ import {
   realpathSync,
 } from "node:fs";
 import path from "node:path";
-import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 
@@ -62,7 +61,11 @@ mkdirSync(webOut, { recursive: true });
 //    postinstall (prisma generate) runs inside the deploy dir, so the
 //    generated .prisma/client lands right there.
 // ---------------------------------------------------------------------------
-const deployDir = path.join(os.tmpdir(), `yiyabo-deploy-${Date.now()}`);
+// Keep deploy on the same volume as the workspace. Windows runners often
+// place TEMP on C: while the checkout is on D:, and pnpm 9 can then build
+// malformed cross-drive dependency links during `pnpm deploy`.
+const deployDir = path.join(repoRoot, ".yiyabo-deploy-temp");
+rmSync(deployDir, { recursive: true, force: true });
 process.on("exit", () => rmSync(deployDir, { recursive: true, force: true }));
 console.log("[assemble-server] pnpm deploy --prod →", deployDir);
 try {
