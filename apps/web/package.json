@@ -29,6 +29,7 @@
     "@latex-ide/contracts": "workspace:*",
     "@latex-ide/latex": "workspace:*",
     "@prisma/client": "^6.2.1",
+    "@tauri-apps/api": "^2.2.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.5",
     "fflate": "^0.8.3",

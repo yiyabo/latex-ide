@@ -34,6 +34,16 @@ import { AiPanel } from "@/components/ai/AiPanel";
 import { Toast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
 
+async function dragWindowFrom(event: React.PointerEvent<HTMLElement>) {
+  if (event.button !== 0 || (event.target as HTMLElement).closest("button, input, textarea, label, a, select")) return;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startDragging();
+  } catch {
+    // Web development mode has no Tauri window API.
+  }
+}
+
 type AiFixRequest = {
   id: string;
   message: string;
@@ -359,6 +369,7 @@ export default function ProjectPage() {
       {/* Top bar */}
       <header
         data-tauri-drag-region
+        onPointerDown={(event) => void dragWindowFrom(event)}
         className="workspace-topbar flex h-14 shrink-0 items-center gap-3 border-b border-border px-4 pl-[88px] pt-2"
       >
         <div className="flex min-w-0 items-center gap-2.5">
